@@ -41,6 +41,12 @@ from memanto.app.services.conversation_memory_extraction_service import (
 from memanto.app.services.memory_read_service import MemoryReadService
 from memanto.app.services.memory_write_service import MemoryWriteService
 from memanto.app.utils.errors import AuthorizationError, map_error_to_http_exception
+from memanto.app.utils.rate_limiting import (
+    enforce_answer_rate_limit,
+    enforce_delete_rate_limit,
+    enforce_read_rate_limit,
+    enforce_write_rate_limit,
+)
 from memanto.app.utils.validation import CostGuard, validate_safe_id
 from memanto.cli.client.direct_client import DirectClient
 from memanto.cli.config.manager import ConfigManager
@@ -254,6 +260,7 @@ async def remember(
 
     # Enforce session scope: token must match agent_id
     enforce_session_scope(session, agent_id)
+    enforce_write_rate_limit(agent_id)
 
     try:
         # Initialize memory write service
@@ -281,6 +288,9 @@ async def remember(
             source=request.source,
             provenance=cast(ProvenanceType, request.provenance),
         )
+
+        if request.ttl_seconds:
+            memory.set_ttl(request.ttl_seconds)
 
         # Store memory in agent's namespace.
         result = await asyncio.to_thread(write_service.store_memory, memory)
@@ -330,6 +340,7 @@ async def batch_remember(
     """
     # Enforce session scope: token must match agent_id
     enforce_session_scope(session, agent_id)
+    enforce_write_rate_limit(agent_id)
 
     try:
         # Initialize memory write service
@@ -356,6 +367,8 @@ async def batch_remember(
                 source=item.source,
                 provenance=cast(ProvenanceType, item.provenance),
             )
+            if item.ttl_seconds:
+                memory.set_ttl(item.ttl_seconds)
             memory_records.append(memory)
 
         # Store in batch
@@ -405,6 +418,7 @@ async def edit_memory(
     The session must be for the specified agent_id.
     """
     enforce_session_scope(session, agent_id)
+    enforce_write_rate_limit(agent_id)
 
     updates = request.to_updates()
     if not updates:
@@ -680,6 +694,7 @@ async def delete_memory(
     The session must be for the specified agent_id.
     """
     enforce_session_scope(session, agent_id)
+    enforce_delete_rate_limit(agent_id)
 
     try:
         write_service = MemoryWriteService(client)
@@ -727,6 +742,7 @@ async def recall(
 
     # Enforce session scope
     enforce_session_scope(session, agent_id)
+    enforce_read_rate_limit(agent_id)
 
     recall_cfg = _config_manager.get_recall_config()
     raw_limit = (
@@ -797,6 +813,7 @@ async def answer(
 
     # Enforce session scope
     enforce_session_scope(session, agent_id)
+    enforce_answer_rate_limit(agent_id)
 
     client = get_moorcheh_client()
 

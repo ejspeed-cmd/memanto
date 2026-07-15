@@ -2,7 +2,7 @@
 Memory Write Service
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ class MemoryWriteService:
             if not memory.id:
                 memory.id = generate_memory_id()
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             self._apply_timestamps(memory, now)
 
             # Auto parse memory type
@@ -140,7 +140,7 @@ class MemoryWriteService:
             validated_documents = []
 
             # Enforce server-side timestamps for batch (single timestamp for all)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             for memory in memories:
                 try:
@@ -238,7 +238,7 @@ class MemoryWriteService:
             failed = sum(1 for r in results if str(r["status"]).lower() == "failed")
 
             return {
-                "total_submitted": len(memories),
+                "total_submitted": len(results),
                 "successful": successful,
                 "failed": failed,
                 "namespace": first_namespace,
@@ -333,7 +333,7 @@ class MemoryWriteService:
                         pass  # Keep default
                 else:
                     updated_memory.created_at = raw_created
-            updated_memory.updated_at = datetime.utcnow()
+            updated_memory.updated_at = datetime.now(timezone.utc)
 
             # Handle TTL
             if "ttl_seconds" in updates:
@@ -343,20 +343,10 @@ class MemoryWriteService:
                 if metadata.get("expires_at"):
                     updated_memory.expires_at = metadata["expires_at"]
 
-            # Step 3: Delete old version
-            from typing import Any, cast
-
-            delete_result = cast(
-                dict[str, Any],
-                self.client.documents.delete(namespace_name=namespace, ids=[memory_id]),
-            )
-
-            if not self._deletion_succeeded(delete_result):
-                raise MemoryError(f"Failed to delete old version of memory {memory_id}")
-
-            validation_result = {"action": "store", "reason": "MVP direct store"}
-
-            # Step 4: Upload new version
+            # Step 3: Upload the updated version under the same ID (upsert).
+            # Uploading before deleting ensures the original is never lost
+            # if the upload call fails. Since Moorcheh's upload is an upsert
+            # when the same ID is used, no explicit delete is needed.
             from typing import cast
 
             from moorcheh_sdk.types.document import Document
@@ -367,8 +357,6 @@ class MemoryWriteService:
             # in on-prem data_store.json) that aren't part of the MemoryRecord schema.
             existing_meta = existing_memory_data.get("metadata", existing_memory_data)
             if isinstance(existing_meta, dict):
-                # ``document`` is a TypedDict; cast to a plain dict to attach
-                # extra schema-external keys (e.g. original_id) dynamically.
                 extra_document = cast(dict[str, Any], document)
                 for key in existing_meta:
                     if (
@@ -382,12 +370,20 @@ class MemoryWriteService:
                 namespace_name=namespace, documents=[document]
             )
 
+            upload_status = upload_result.get("status", "unknown")
+            if upload_status.lower() not in SUCCESSFUL_UPLOAD_STATUSES:
+                raise MemoryError(
+                    f"Upload of updated memory returned status '{upload_status}' — original preserved"
+                )
+
+            validation_result = {"action": "store", "reason": "MVP direct store"}
+
             return {
                 "id": memory_id,
                 "namespace": namespace,
                 "status": upload_result.get("status", "unknown"),
                 "action": "updated",
-                "reason": "Memory updated successfully via delete-and-recreate",
+                "reason": "Memory updated successfully via upsert",
                 "validation": validation_result.get("action", "validated"),
                 "updated_fields": list(updates.keys()),
             }

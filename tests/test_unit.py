@@ -678,9 +678,9 @@ class TestMemoryWriteServiceTimestamps:
             created_at=source_created,
         )
 
-        before_store = datetime.utcnow()
+        before_store = datetime.now(timezone.utc)
         service.batch_store_memories([memory])
-        after_store = datetime.utcnow()
+        after_store = datetime.now(timezone.utc)
 
         uploaded = client.documents.upload.call_args.kwargs["documents"][0]
         assert not uploaded["created_at"].startswith("2020-01-02T03:04:05")

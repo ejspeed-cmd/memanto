@@ -462,7 +462,8 @@ class SessionService:
             if tags:
                 f.write(f"- **Tags**: {', '.join(f'`{t}`' for t in tags)}\n")
             f.write("- **Content**:\n")
-            f.write(f"> {content.replace(chr(10), chr(10) + '> ')}\n\n")
+            normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+            f.write(f"> {normalized.replace(chr(10), chr(10) + '> ')}\n\n")
             f.write("---\n\n")
 
     def log_memory_deletion_to_session_summary(
