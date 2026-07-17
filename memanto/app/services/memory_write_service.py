@@ -229,18 +229,27 @@ class MemoryWriteService:
                     if result["status"] == "pending":
                         result["status"] = moorcheh_status
 
-            # Count successes and failures
+            # Count successes, failures, and namespace-rejected items separately
+            # so that successful + failed + rejected == total_submitted always.
+            _known = set(SUCCESSFUL_UPLOAD_STATUSES) | {"failed", "rejected"}
             successful = sum(
                 1
                 for r in results
                 if str(r["status"]).lower() in SUCCESSFUL_UPLOAD_STATUSES
             )
             failed = sum(1 for r in results if str(r["status"]).lower() == "failed")
+            rejected = sum(1 for r in results if str(r["status"]).lower() == "rejected")
+            # Absorb any non-standard upload statuses into failed so the invariant holds
+            failed += len(results) - successful - failed - rejected
+            for r in results:
+                if str(r["status"]).lower() not in _known:
+                    r["status"] = "failed"
 
             return {
                 "total_submitted": len(results),
                 "successful": successful,
                 "failed": failed,
+                "rejected": rejected,
                 "namespace": first_namespace,
                 "results": results,
             }
@@ -256,13 +265,12 @@ class MemoryWriteService:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Update existing memory using delete-and-recreate pattern
+        Update existing memory.
 
-        Since Moorcheh doesn't support in-place updates, we:
+        Moorcheh supports overwriting documents by ID, so we:
         1. Retrieve the existing memory
         2. Apply updates to create new version
-        3. Delete old version
-        4. Upload new version with same ID
+        3. Upload new version with same ID (overwrites)
 
         Args:
             memory_id: ID of memory to update
@@ -343,13 +351,14 @@ class MemoryWriteService:
                 if metadata.get("expires_at"):
                     updated_memory.expires_at = metadata["expires_at"]
 
-            # Step 3: Upload the updated version under the same ID (upsert).
-            # Uploading before deleting ensures the original is never lost
-            # if the upload call fails. Since Moorcheh's upload is an upsert
-            # when the same ID is used, no explicit delete is needed.
-            from typing import cast
+            # Step 3: Upload new version (overwrites existing document with same ID).
+            # Uploading with the same ID is safe — Moorcheh treats it as an upsert,
+            # so the original is never lost if the upload call fails.
+            from typing import Any, cast
 
             from moorcheh_sdk.types.document import Document
+
+            validation_result = {"action": "store", "reason": "MVP direct store"}
 
             document = cast(Document, updated_memory.to_moorcheh_document())
 
@@ -366,9 +375,12 @@ class MemoryWriteService:
                     ):
                         extra_document[key] = existing_meta[key]
 
-            upload_result = self.client.documents.upload(
-                namespace_name=namespace, documents=[document]
-            )
+            try:
+                upload_result = self.client.documents.upload(
+                    namespace_name=namespace, documents=[document]
+                )
+            except Exception as e:
+                raise MemoryError(f"Upload failed. Error: {e}")
 
             upload_status = upload_result.get("status", "unknown")
             if upload_status.lower() not in SUCCESSFUL_UPLOAD_STATUSES:
@@ -376,14 +388,12 @@ class MemoryWriteService:
                     f"Upload of updated memory returned status '{upload_status}' — original preserved"
                 )
 
-            validation_result = {"action": "store", "reason": "MVP direct store"}
-
             return {
                 "id": memory_id,
                 "namespace": namespace,
                 "status": upload_result.get("status", "unknown"),
                 "action": "updated",
-                "reason": "Memory updated successfully via upsert",
+                "reason": "Memory updated successfully via overwrite",
                 "validation": validation_result.get("action", "validated"),
                 "updated_fields": list(updates.keys()),
             }
