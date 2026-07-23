@@ -754,6 +754,169 @@ def map_hindsight(export: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def map_langgraph(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for item in export.get("items", []) or []:
+        try:
+            value = item.get("value")
+            if isinstance(value, dict):
+                content = (value.get("content") or "").strip()
+            elif isinstance(value, str):
+                content = value.strip()
+            else:
+                content = str(value).strip() if value is not None else ""
+            if not content:
+                continue
+
+            namespace = item.get("namespace") or []
+            if isinstance(namespace, (list, tuple)):
+                ns_tag = "/".join(str(p) for p in namespace) if namespace else None
+            else:
+                ns_tag = str(namespace) if namespace else None
+
+            key = item.get("key")
+            footer_pairs: list[tuple[str, Any]] = [("Namespace", ns_tag), ("Key", key)]
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    if k != "content" and v:
+                        footer_pairs.append((k.capitalize(), str(v)))
+            footer = _format_supporting_data(footer_pairs)
+
+            rows.append(
+                {
+                    "title": _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": None,
+                    "tags": [ns_tag] if ns_tag else [],
+                    "confidence": 0.8,
+                    "source": "langgraph",
+                    "source_ref": key,
+                    "provenance": "imported",
+                    "created_at": _parse_dt(item.get("created_at")),
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError):
+            continue
+
+    return rows
+
+
+def map_notion(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for entry in export.get("memories", []) or []:
+        try:
+            body = (entry.get("body") or "").strip()
+            explicit_title = (entry.get("title") or "").strip()
+            stem = (entry.get("filename_stem") or "").strip()
+
+            if not explicit_title and not body:
+                continue
+
+            title = explicit_title or stem or _title_from(body)
+            content = body if body else explicit_title
+            if not content:
+                continue
+
+            tags = [str(t) for t in (entry.get("tags") or []) if t]
+            footer = _format_supporting_data([("Filename", stem or None)])
+            rows.append(
+                {
+                    "title": title,
+                    "content": _attach_footer(content, footer),
+                    "type": "artifact",
+                    "tags": tags,
+                    "confidence": 0.8,
+                    "source": "notion",
+                    "source_ref": stem or None,
+                    "provenance": "imported",
+                    "created_at": _parse_dt(entry.get("created_at")),
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError):
+            continue
+
+    return rows
+
+
+def map_obsidian(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for entry in export.get("memories", []) or []:
+        try:
+            body = (entry.get("body") or "").strip()
+            if not body:
+                continue
+            stem = (entry.get("filename_stem") or "").strip()
+            title = (entry.get("title") or "").strip() or stem
+            tags = [str(t) for t in (entry.get("tags") or []) if t]
+            footer = _format_supporting_data(
+                [("Filename", stem or None)]
+            )
+            rows.append(
+                {
+                    "title": title or _title_from(body),
+                    "content": _attach_footer(body, footer),
+                    "type": "artifact",
+                    "tags": tags,
+                    "confidence": 0.8,
+                    "source": "obsidian",
+                    "source_ref": stem or None,
+                    "provenance": "imported",
+                    "created_at": _parse_dt(entry.get("created_at")),
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError):
+            continue
+
+    return rows
+
+
+def map_chroma(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for item in export.get("memories", []) or []:
+        try:
+            content = (item.get("document") or "").strip()
+            if not content:
+                continue
+            metadata = item.get("metadata") or {}
+            meta_source = metadata.get("source")
+            footer_pairs: list[tuple[str, Any]] = []
+            if meta_source:
+                footer_pairs.append(("source", meta_source))
+            for k, v in metadata.items():
+                if k != "source" and v is not None:
+                    footer_pairs.append((k, str(v)))
+            footer = _format_supporting_data(footer_pairs)
+            rows.append(
+                {
+                    "title": _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": None,
+                    "tags": [],
+                    "confidence": 0.8,
+                    "source": "chroma",
+                    "source_ref": item.get("id"),
+                    "provenance": "imported",
+                    "created_at": None,
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError):
+            continue
+
+    return rows
+
+
 MAPPERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "mem0": map_mem0,
     "letta": map_letta,
@@ -764,6 +927,10 @@ MAPPERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "gemini": map_gemini,
     "zep": map_zep,
     "hindsight": map_hindsight,
+    "langgraph": map_langgraph,
+    "notion": map_notion,
+    "obsidian": map_obsidian,
+    "chroma": map_chroma,
 }
 
 
