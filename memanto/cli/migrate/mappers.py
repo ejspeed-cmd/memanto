@@ -487,11 +487,192 @@ def map_okf(export: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+# --------------------------------------------------------------------------
+# Claude
+# --------------------------------------------------------------------------
+
+
+def map_claude(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for conv in export.get("memories", []) or []:
+        conv_title = (conv.get("name") or "").strip() or None
+
+        for msg in conv.get("chat_messages", []) or []:
+            if msg.get("sender") != "human":
+                continue
+            content = (msg.get("text") or "").strip()
+            if not content:
+                parts = msg.get("content") or []
+                content = " ".join(
+                    p["text"] for p in parts
+                    if isinstance(p, dict) and p.get("type") == "text" and p.get("text", "").strip()
+                ).strip()
+            if not content:
+                continue
+
+            created_at = _parse_dt(msg.get("created_at"))
+
+            footer = _format_supporting_data(
+                [
+                    ("Conversation", conv_title),
+                    ("Conversation id", conv.get("uuid")),
+                    ("Message id", msg.get("uuid")),
+                ]
+            )
+
+            rows.append(
+                {
+                    "title": conv_title or _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": None,
+                    "tags": [],
+                    "confidence": 0.8,
+                    "source": "claude",
+                    "source_ref": str(msg.get("uuid")) if msg.get("uuid") else None,
+                    "provenance": "imported",
+                    "created_at": created_at,
+                    "updated_at": migrated_at,
+                }
+            )
+
+    return rows
+
+
+# --------------------------------------------------------------------------
+# Gemini
+# --------------------------------------------------------------------------
+
+
+def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for conv in export.get("memories", []) or []:
+        try:
+            messages = conv.get("messages") or []
+            created_at = _parse_dt(conv.get("createdTime"))
+        except (AttributeError, TypeError):
+            continue
+
+        for msg in messages:
+            try:
+                if msg.get("role") != "user":
+                    continue
+                content = (msg.get("text") or "").strip()
+                if not content:
+                    continue
+            except (AttributeError, TypeError):
+                continue
+
+            footer = _format_supporting_data(
+                [
+                    ("Conversation id", conv.get("id")),
+                ]
+            )
+
+            rows.append(
+                {
+                    "title": _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": None,
+                    "tags": [],
+                    "confidence": 0.8,
+                    "source": "gemini",
+                    "source_ref": str(conv.get("id")) if conv.get("id") else None,
+                    "provenance": "imported",
+                    "created_at": created_at,
+                    "updated_at": migrated_at,
+                }
+            )
+
+    return rows
+
+
+# --------------------------------------------------------------------------
+# ChatGPT
+# --------------------------------------------------------------------------
+
+
+def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for conv in export.get("memories", []) or []:
+        mapping = conv.get("mapping") or {}
+        current_node = conv.get("current_node")
+        if not mapping or not current_node:
+            continue
+
+        seen: set[str] = set()
+        user_nodes: list[dict[str, Any]] = []
+        node_id = current_node
+
+        while node_id and node_id not in seen:
+            seen.add(node_id)
+            node = mapping.get(node_id)
+            if not node:
+                break
+            msg = node.get("message")
+            if msg:
+                author = msg.get("author") or {}
+                content_obj = msg.get("content") or {}
+                if (
+                    author.get("role") == "user"
+                    and content_obj.get("content_type", "text") != "user_editable_context"
+                ):
+                    parts = content_obj.get("parts") or []
+                    content = " ".join(p for p in parts if isinstance(p, str) and p.strip())
+                    if content:
+                        user_nodes.append(node)
+            node_id = node.get("parent")
+
+        user_nodes.reverse()
+
+        conv_title = (conv.get("title") or "").strip() or None
+
+        for node in user_nodes:
+            msg = node["message"]
+            parts = (msg.get("content") or {}).get("parts") or []
+            content = " ".join(p for p in parts if isinstance(p, str) and p.strip())
+
+            created_at = _parse_dt(msg.get("create_time")) or _parse_dt(conv.get("create_time"))
+
+            footer = _format_supporting_data(
+                [
+                    ("Conversation", conv_title),
+                    ("Conversation id", conv.get("id")),
+                    ("Node id", node.get("id")),
+                ]
+            )
+
+            rows.append(
+                {
+                    "title": conv_title or _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": None,
+                    "tags": [],
+                    "confidence": 0.8,
+                    "source": "chatgpt",
+                    "source_ref": str(node.get("id")) if node.get("id") else None,
+                    "provenance": "imported",
+                    "created_at": created_at,
+                    "updated_at": migrated_at,
+                }
+            )
+
+    return rows
+
+
 MAPPERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "mem0": map_mem0,
     "letta": map_letta,
     "supermemory": map_supermemory,
     "okf": map_okf,
+    "chatgpt": map_chatgpt,
+    "claude": map_claude,
+    "gemini": map_gemini,
 }
 
 
