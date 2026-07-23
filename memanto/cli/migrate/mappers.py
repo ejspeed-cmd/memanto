@@ -665,6 +665,95 @@ def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for edge in export.get("memories", []) or []:
+        try:
+            content = (edge.get("fact") or "").strip()
+            if not content:
+                continue
+            rating = edge.get("score") or edge.get("relevance")
+            footer = _format_supporting_data(
+                [
+                    ("Edge name", edge.get("name")),
+                    ("Rating", str(rating) if rating is not None else None),
+                    ("UUID", edge.get("uuid")),
+                ]
+            )
+            rows.append(
+                {
+                    "title": _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": "fact",
+                    "tags": [],
+                    "confidence": float(rating) if rating is not None else 0.8,
+                    "source": "zep",
+                    "source_ref": edge.get("uuid"),
+                    "provenance": "imported",
+                    "created_at": _parse_dt(edge.get("valid_at") or edge.get("created_at")),
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError, ValueError):
+            continue
+
+    return rows
+
+
+_HINDSIGHT_TYPE_MAP: dict[str, str] = {
+    "world": "fact",
+    "experience": "event",
+}
+
+
+def _hindsight_type(fact_type: str | None) -> str | None:
+    if not fact_type:
+        return None
+    t = fact_type.strip().lower()
+    return _HINDSIGHT_TYPE_MAP.get(t) or _coerce_type(t)
+
+
+def map_hindsight(export: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    migrated_at = _now_utc()
+
+    for item in export.get("memories", []) or []:
+        try:
+            content = (item.get("text") or item.get("content") or "").strip()
+            if not content:
+                continue
+            metadata = item.get("metadata") or {}
+            footer = _format_supporting_data(
+                [
+                    ("Bank", item.get("bank_id")),
+                    ("Fact type", item.get("fact_type")),
+                    ("Context", item.get("context") or None),
+                    ("Entities", item.get("entities") or None),
+                    *((k, str(v)) for k, v in metadata.items() if v),
+                ]
+            )
+            rows.append(
+                {
+                    "title": _title_from(content),
+                    "content": _attach_footer(content, footer),
+                    "type": _hindsight_type(item.get("fact_type")),
+                    "tags": list(item.get("tags") or []),
+                    "confidence": 0.8,
+                    "source": "hindsight",
+                    "source_ref": item.get("id"),
+                    "provenance": "imported",
+                    "created_at": _parse_dt(item.get("date") or item.get("mentioned_at")),
+                    "updated_at": migrated_at,
+                }
+            )
+        except (AttributeError, TypeError):
+            continue
+
+    return rows
+
+
 MAPPERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "mem0": map_mem0,
     "letta": map_letta,
@@ -673,6 +762,8 @@ MAPPERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "chatgpt": map_chatgpt,
     "claude": map_claude,
     "gemini": map_gemini,
+    "zep": map_zep,
+    "hindsight": map_hindsight,
 }
 
 
