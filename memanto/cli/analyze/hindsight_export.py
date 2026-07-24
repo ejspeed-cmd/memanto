@@ -54,6 +54,8 @@ def list_all_banks(client: httpx.Client) -> list[dict[str, Any]]:
 def list_bank_memories(client: httpx.Client, bank_id: str) -> list[dict[str, Any]]:
     memories: list[dict[str, Any]] = []
     offset = 0
+    MAX_PAGES = 500
+    pages = 0
     while True:
         data = _get_json(
             client,
@@ -62,8 +64,14 @@ def list_bank_memories(client: httpx.Client, bank_id: str) -> list[dict[str, Any
         )
         batch = data.get("items") or []
         memories.extend(batch)
+        pages += 1
         if len(batch) < PAGE_SIZE:
             break
+        if pages >= MAX_PAGES:
+            raise RuntimeError(
+                f"Pagination cap ({MAX_PAGES} pages) reached for bank '{bank_id}'. "
+                "Export may be incomplete."
+            )
         offset += PAGE_SIZE
     return memories
 
@@ -117,12 +125,19 @@ def run_hindsight_export(
         },
         "banks": banks,
         "memories": all_memories,
-        "memories_by_bank": memories_by_bank,
+        "memory_ids_by_bank": {
+            bid: [m.get("id") for m in mems if m.get("id")]
+            for bid, mems in memories_by_bank.items()
+        },
     }
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / "hindsight_export.json"
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(export, f, indent=2, ensure_ascii=False, default=str)
+    try:
+        out_path.chmod(0o600)
+    except OSError:
+        pass
 
     return out_path, export

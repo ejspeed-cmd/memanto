@@ -113,6 +113,7 @@ class ConfigManager:
         self._set_env_var("LETTA_API_KEY", _normalize_duplicated_api_key(api_key))
 
     def get_zep_api_key(self) -> str | None:
+        """Get Zep API key from ~/.memanto/.env."""
         if self.env_file.exists():
             load_dotenv(self.env_file, override=True)
         key = (os.environ.get("ZEP_API_KEY") or os.environ.get("zep_api_key") or "").strip()
@@ -121,9 +122,11 @@ class ConfigManager:
         return _normalize_duplicated_api_key(key)
 
     def set_zep_api_key(self, api_key: str) -> None:
+        """Save Zep API key to ~/.memanto/.env."""
         self._set_env_var("ZEP_API_KEY", _normalize_duplicated_api_key(api_key))
 
     def get_hindsight_api_key(self) -> str | None:
+        """Get Hindsight API key from ~/.memanto/.env."""
         if self.env_file.exists():
             load_dotenv(self.env_file, override=True)
         key = (os.environ.get("HINDSIGHT_API_KEY") or os.environ.get("hindsight_api_key") or "").strip()
@@ -132,6 +135,7 @@ class ConfigManager:
         return _normalize_duplicated_api_key(key)
 
     def set_hindsight_api_key(self, api_key: str) -> None:
+        """Save Hindsight API key to ~/.memanto/.env."""
         self._set_env_var("HINDSIGHT_API_KEY", _normalize_duplicated_api_key(api_key))
 
     def _set_env_var(self, name: str, value: str) -> None:

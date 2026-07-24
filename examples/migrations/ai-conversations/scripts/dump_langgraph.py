@@ -28,7 +28,7 @@ def _get_store():
             print("langgraph[postgres] not installed. Run: pip install 'langgraph[postgres]'", file=sys.stderr)
             sys.exit(1)
         except Exception as e:
-            print(f"Failed to connect to Postgres store: {e}", file=sys.stderr)
+            print(f"Failed to initialize Postgres store: {e}", file=sys.stderr)
             sys.exit(1)
     else:
         from langgraph.store.memory import InMemoryStore
@@ -37,17 +37,33 @@ def _get_store():
 
 async def _dump(store, postgres: bool) -> list[dict]:
     items = []
+    seen: set[tuple] = set()
     ns_list = await store.alist_namespaces()
     for ns in ns_list:
-        results = await store.asearch(ns)
-        for item in results:
-            items.append({
-                "namespace": list(item.namespace),
-                "key": item.key,
-                "value": item.value,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
-                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-            })
+        offset = 0
+        limit = 100
+        while True:
+            try:
+                results = await store.asearch(ns, limit=limit, offset=offset)
+            except TypeError:
+                results = await store.asearch(ns)
+            if not results:
+                break
+            for item in results:
+                key = (tuple(item.namespace), item.key)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append({
+                    "namespace": list(item.namespace),
+                    "key": item.key,
+                    "value": item.value,
+                    "created_at": item.created_at.isoformat() if item.created_at else None,
+                    "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                })
+            if len(results) < limit:
+                break
+            offset += limit
     return items
 
 
@@ -66,9 +82,17 @@ async def main(output: str) -> None:
         await _seed_demo(store)
         items = await _dump(store, postgres)
     else:
-        async with store as s:
-            await s.setup()
-            items = await _dump(s, postgres)
+        try:
+            async with store as s:
+                try:
+                    await s.setup()
+                except Exception as e:
+                    print(f"Failed to set up Postgres store: {e}", file=sys.stderr)
+                    sys.exit(1)
+                items = await _dump(s, postgres)
+        except Exception as e:
+            print(f"Failed to connect to Postgres store: {e}", file=sys.stderr)
+            sys.exit(1)
 
     export = {"items": items}
     with open(output, "w", encoding="utf-8") as f:

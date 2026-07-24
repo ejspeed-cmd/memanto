@@ -500,42 +500,46 @@ def map_claude(export: dict[str, Any]) -> list[dict[str, Any]]:
         conv_title = (conv.get("name") or "").strip() or None
 
         for msg in conv.get("chat_messages", []) or []:
-            if msg.get("sender") != "human":
+            try:
+                if msg.get("sender") != "human":
+                    continue
+                text = msg.get("text")
+                content = (text if isinstance(text, str) else "").strip()
+                if not content:
+                    parts = msg.get("content") or []
+                    content = " ".join(
+                        p["text"] for p in parts
+                        if isinstance(p, dict) and p.get("type") == "text" and p.get("text", "").strip()
+                    ).strip()
+                if not content:
+                    continue
+
+                created_at = _parse_dt(msg.get("created_at"))
+
+                footer = _format_supporting_data(
+                    [
+                        ("Conversation", conv_title),
+                        ("Conversation id", conv.get("uuid")),
+                        ("Message id", msg.get("uuid")),
+                    ]
+                )
+
+                rows.append(
+                    {
+                        "title": conv_title or _title_from(content),
+                        "content": _attach_footer(content, footer),
+                        "type": None,
+                        "tags": [],
+                        "confidence": 0.8,
+                        "source": "claude",
+                        "source_ref": str(msg.get("uuid")) if msg.get("uuid") else None,
+                        "provenance": "imported",
+                        "created_at": created_at,
+                        "updated_at": migrated_at,
+                    }
+                )
+            except (AttributeError, TypeError):
                 continue
-            content = (msg.get("text") or "").strip()
-            if not content:
-                parts = msg.get("content") or []
-                content = " ".join(
-                    p["text"] for p in parts
-                    if isinstance(p, dict) and p.get("type") == "text" and p.get("text", "").strip()
-                ).strip()
-            if not content:
-                continue
-
-            created_at = _parse_dt(msg.get("created_at"))
-
-            footer = _format_supporting_data(
-                [
-                    ("Conversation", conv_title),
-                    ("Conversation id", conv.get("uuid")),
-                    ("Message id", msg.get("uuid")),
-                ]
-            )
-
-            rows.append(
-                {
-                    "title": conv_title or _title_from(content),
-                    "content": _attach_footer(content, footer),
-                    "type": None,
-                    "tags": [],
-                    "confidence": 0.8,
-                    "source": "claude",
-                    "source_ref": str(msg.get("uuid")) if msg.get("uuid") else None,
-                    "provenance": "imported",
-                    "created_at": created_at,
-                    "updated_at": migrated_at,
-                }
-            )
 
     return rows
 
@@ -676,7 +680,7 @@ def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             rating = edge.get("score") or edge.get("relevance")
             try:
-                confidence = float(rating) if rating is not None else 0.8
+                confidence = min(1.0, max(0.0, float(rating))) if rating is not None else 0.8
             except (TypeError, ValueError):
                 confidence = 0.8
             footer = _format_supporting_data(
@@ -766,7 +770,8 @@ def map_langgraph(export: dict[str, Any]) -> list[dict[str, Any]]:
         try:
             value = item.get("value")
             if isinstance(value, dict):
-                content = (value.get("content") or "").strip()
+                raw_content = value.get("content")
+                content = (str(raw_content) if raw_content is not None else "").strip()
             elif isinstance(value, str):
                 content = value.strip()
             else:
@@ -808,40 +813,50 @@ def map_langgraph(export: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _map_markdown_entry(
+    entry: dict[str, Any],
+    *,
+    source: str,
+    memory_type: str,
+    migrated_at: Any,
+) -> dict[str, Any] | None:
+    body = (entry.get("body") or "").strip()
+    explicit_title = (entry.get("title") or "").strip()
+    stem = (entry.get("filename_stem") or "").strip()
+
+    if not explicit_title and not body:
+        return None
+
+    title = explicit_title or stem or _title_from(body)
+    content = body if body else explicit_title
+    if not content:
+        return None
+
+    tags = [str(t) for t in (entry.get("tags") or []) if t]
+    footer = _format_supporting_data([("Filename", stem or None)])
+    return {
+        "title": title,
+        "content": _attach_footer(content, footer),
+        "type": memory_type,
+        "tags": tags,
+        "confidence": 0.8,
+        "source": source,
+        "source_ref": stem or None,
+        "provenance": "imported",
+        "created_at": _parse_dt(entry.get("created_at")),
+        "updated_at": migrated_at,
+    }
+
+
 def map_notion(export: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
     for entry in export.get("memories", []) or []:
         try:
-            body = (entry.get("body") or "").strip()
-            explicit_title = (entry.get("title") or "").strip()
-            stem = (entry.get("filename_stem") or "").strip()
-
-            if not explicit_title and not body:
-                continue
-
-            title = explicit_title or stem or _title_from(body)
-            content = body if body else explicit_title
-            if not content:
-                continue
-
-            tags = [str(t) for t in (entry.get("tags") or []) if t]
-            footer = _format_supporting_data([("Filename", stem or None)])
-            rows.append(
-                {
-                    "title": title,
-                    "content": _attach_footer(content, footer),
-                    "type": "artifact",
-                    "tags": tags,
-                    "confidence": 0.8,
-                    "source": "notion",
-                    "source_ref": stem or None,
-                    "provenance": "imported",
-                    "created_at": _parse_dt(entry.get("created_at")),
-                    "updated_at": migrated_at,
-                }
-            )
+            row = _map_markdown_entry(entry, source="notion", memory_type="artifact", migrated_at=migrated_at)
+            if row:
+                rows.append(row)
         except (AttributeError, TypeError):
             continue
 
@@ -854,29 +869,9 @@ def map_obsidian(export: dict[str, Any]) -> list[dict[str, Any]]:
 
     for entry in export.get("memories", []) or []:
         try:
-            body = (entry.get("body") or "").strip()
-            if not body:
-                continue
-            stem = (entry.get("filename_stem") or "").strip()
-            title = (entry.get("title") or "").strip() or stem
-            tags = [str(t) for t in (entry.get("tags") or []) if t]
-            footer = _format_supporting_data(
-                [("Filename", stem or None)]
-            )
-            rows.append(
-                {
-                    "title": title or _title_from(body),
-                    "content": _attach_footer(body, footer),
-                    "type": "artifact",
-                    "tags": tags,
-                    "confidence": 0.8,
-                    "source": "obsidian",
-                    "source_ref": stem or None,
-                    "provenance": "imported",
-                    "created_at": _parse_dt(entry.get("created_at")),
-                    "updated_at": migrated_at,
-                }
-            )
+            row = _map_markdown_entry(entry, source="obsidian", memory_type="artifact", migrated_at=migrated_at)
+            if row:
+                rows.append(row)
         except (AttributeError, TypeError):
             continue
 

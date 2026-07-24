@@ -27,6 +27,7 @@ from typing import Any, cast
 
 import os
 import typer
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from memanto.app.utils.errors import (
@@ -85,6 +86,16 @@ from memanto.cli.migrate.runner import (
     run_migration,
     write_preview,
 )
+
+def _safe_extract(zf: Any, dest: str) -> None:
+    """Extract a ZipFile while rejecting members that escape the destination."""
+    import os
+    import zipfile
+    dest_path = os.path.realpath(dest)
+    for member in zf.namelist():
+        member_path = os.path.realpath(os.path.join(dest, member))
+        if not member_path.startswith(dest_path + os.sep) and member_path != dest_path:
+            raise zipfile.BadZipFile(f"Unsafe path in archive: {member}")
 
 # Per-provider plumbing in one place so each subcommand stays tiny.
 _PROVIDER_BUNDLES: dict[str, dict[str, Any]] = {
@@ -332,7 +343,7 @@ def _render_summary(
         body_lines.append(f"[dim]Savings report:[/dim] {report_path}")
     if summary.errors:
         body_lines.append(
-            f"[red]First error:[/red] {summary.errors[0]}  "
+            f"[red]First error:[/red] {rich_escape(summary.errors[0])}  "
             "[dim](see run dir for more)[/dim]"
         )
     border = WARNING if summary.failed else SUCCESS
@@ -367,9 +378,12 @@ def _resolve_target_agent(agent: str | None) -> str:
 
 def _load_export_or_exit(file: Path) -> dict[str, Any]:
     try:
-        return load_export(file)
+        data = load_export(file)
     except (OSError, ValueError) as exc:
         _error(f"Cannot read export file: {exc}")
+    if not isinstance(data, dict):
+        _error(f"Export file must be a JSON object, got {type(data).__name__}: {file}")
+    return data
 
 
 def _load_or_export(
@@ -493,7 +507,7 @@ def _run_migrate_flow(
     if summary.errors:
         sample = summary.errors[0]
         body_lines.append(
-            f"[red]First error:[/red] {sample}  [dim](see run dir for more)[/dim]"
+            f"[red]First error:[/red] {rich_escape(sample)}  [dim](see run dir for more)[/dim]"
         )
 
     border = WARNING if summary.failed else SUCCESS
@@ -702,7 +716,7 @@ def migrate_okf(
     body_lines.append(f"[dim]Mapped preview:[/dim] {preview_path}")
     if summary.errors:
         body_lines.append(
-            f"[red]First error:[/red] {summary.errors[0]}  "
+            f"[red]First error:[/red] {rich_escape(summary.errors[0])}  "
             "[dim](see run dir for more)[/dim]"
         )
 
@@ -774,6 +788,7 @@ def migrate_conversations(
         with tempfile.TemporaryDirectory() as tmp:
             try:
                 with zipfile.ZipFile(path) as zf:
+                    _safe_extract(zf, tmp)
                     zf.extractall(tmp)
             except zipfile.BadZipFile:
                 _error(f"Cannot read ZIP file: {path}")
@@ -835,7 +850,9 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
             entries = json.loads(json_activity.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        for entry in entries or []:
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
             title = entry.get("title") or ""
             m = re.match(r"prompted\s+", title, re.IGNORECASE)
             if not m:
@@ -1170,10 +1187,17 @@ def migrate_notion(
     run_dir, progress = _start_run("notion", "Notion", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
+    if not file.exists() or not file.is_file():
+        _error(
+            f"Notion export not found: {file}",
+            hint="Provide a path to your Notion export ZIP file.",
+        )
+
     progress(f"Extracting {file}")
     try:
         with zipfile.ZipFile(file) as zf:
             with tempfile.TemporaryDirectory() as tmp:
+                _safe_extract(zf, tmp)
                 zf.extractall(tmp)
                 tmp_path = Path(tmp)
                 memories: list[dict] = []
@@ -1249,7 +1273,10 @@ def migrate_obsidian(
     progress(f"Scanning vault at {file}")
     memories: list[dict] = []
     for md_file in Path(file).rglob("*.md"):
-        raw = md_file.read_text(encoding="utf-8", errors="replace")
+        try:
+            raw = md_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
         frontmatter: dict = {}
         body = raw
         if raw.startswith("---\n"):
@@ -1395,14 +1422,25 @@ def migrate_chroma(
         _error(f"Failed to connect to Chroma: {exc}")
 
     progress(f"Fetching documents from collection '{collection}'")
+    ids: list = []
+    documents: list = []
+    metadatas: list = []
+    offset = 0
+    page_size = 500
     try:
-        result = col.get(include=["documents", "metadatas"])
+        while True:
+            page = col.get(include=["documents", "metadatas"], limit=page_size, offset=offset)
+            page_ids = page.get("ids") or []
+            if not page_ids:
+                break
+            ids.extend(page_ids)
+            documents.extend(page.get("documents") or [])
+            metadatas.extend(page.get("metadatas") or [])
+            if len(page_ids) < page_size:
+                break
+            offset += page_size
     except Exception as exc:
         _error(f"Failed to fetch Chroma collection: {exc}")
-
-    ids = result.get("ids") or []
-    documents = result.get("documents") or []
-    metadatas = result.get("metadatas") or []
 
     memories = [
         {

@@ -142,5 +142,9 @@ def run_zep_export(
     out_path = dest_dir / "zep_export.json"
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(export, f, indent=2, ensure_ascii=False, default=str)
+    try:
+        out_path.chmod(0o600)
+    except OSError:
+        pass
 
     return out_path, export
