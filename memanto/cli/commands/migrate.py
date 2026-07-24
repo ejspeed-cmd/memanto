@@ -828,10 +828,13 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
     json_hits = list(tmp_path.rglob("*Activity*.json"))
     html_hits = list(tmp_path.rglob("*Activity*.html"))
 
-    if json_hits:
-        json_activity = json_hits[0]
-        entries = json.loads(json_activity.read_text(encoding="utf-8"))
-        memories = []
+    memories: list[dict[str, Any]] = []
+
+    for json_activity in json_hits:
+        try:
+            entries = json.loads(json_activity.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
         for entry in entries or []:
             title = entry.get("title") or ""
             m = re.match(r"prompted\s+", title, re.IGNORECASE)
@@ -846,16 +849,18 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
                     "messages": [{"role": "user", "text": prompt}],
                 }
             )
-        return {"memories": memories}
 
-    if html_hits:
-        return _parse_gemini_html(html_hits[0])
+    for html_activity in html_hits:
+        result = _parse_gemini_html(html_activity)
+        memories.extend(result.get("memories") or [])
+
+    if memories:
+        return {"memories": memories}
 
     candidates = [
         f for f in tmp_path.rglob("*.json")
         if not re.search(r"activity", f.name, re.IGNORECASE)
     ]
-    memories = []
     for f in candidates:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
