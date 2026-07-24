@@ -118,6 +118,7 @@ _PROVIDER_BUNDLES: dict[str, dict[str, Any]] = {
 _PROVIDER_LABELS: dict[str, str] = {
     **{k: v["label"] for k, v in _PROVIDER_BUNDLES.items()},
     "zep": "Zep",
+    "hindsight": "Hindsight",
 }
 
 
@@ -150,6 +151,12 @@ def _resolve_provider_key(
             config_manager.set_zep_api_key,
             "https://app.getzep.com",
             "ZEP_API_KEY",
+        ),
+        "hindsight": (
+            config_manager.get_hindsight_api_key,
+            config_manager.set_hindsight_api_key,
+            "https://hindsight.vectorize.io",
+            "HINDSIGHT_API_KEY",
         ),
     }
     get_fn, set_fn, docs_url, env_name = getters[provider]
@@ -270,6 +277,79 @@ def _render_savings_report(
     return report_path
 
 
+def _start_run(
+    provider: str,
+    label: str,
+    dry_run: bool,
+) -> tuple[Path, Callable[[str], None]]:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir(provider) / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(
+        Panel.fit(
+            f"[{BOLD_PRIMARY}]{label} -> Memanto  {mode}[/{BOLD_PRIMARY}]",
+            border_style=PRIMARY,
+        )
+    )
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    return run_dir, progress
+
+
+def _render_summary(
+    summary: Any,
+    rows: list[dict[str, Any]],
+    run_dir: Path,
+    target_agent: str | None,
+    dry_run: bool,
+    *,
+    report_path: Path | None = None,
+) -> None:
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+    type_lines = (
+        ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    )
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  "
+        f"[dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if report_path:
+        body_lines.append(f"[dim]Savings report:[/dim] {report_path}")
+    if summary.errors:
+        body_lines.append(
+            f"[red]First error:[/red] {summary.errors[0]}  "
+            "[dim](see run dir for more)[/dim]"
+        )
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title=(
+                "[bold yellow]Dry run complete[/bold yellow]"
+                if dry_run
+                else "[bold green]Migration complete[/bold green]"
+            ),
+            border_style=border,
+        )
+    )
+
+
 def _resolve_target_agent(agent: str | None) -> str:
     if agent and agent.strip():
         return agent.strip()
@@ -283,6 +363,13 @@ def _resolve_target_agent(agent: str | None) -> str:
             ),
         )
     return active_agent_id
+
+
+def _load_export_or_exit(file: Path) -> dict[str, Any]:
+    try:
+        return load_export(file)
+    except (OSError, ValueError) as exc:
+        _error(f"Cannot read export file: {exc}")
 
 
 def _load_or_export(
@@ -679,21 +766,7 @@ def migrate_conversations(
             hint=f"Choose one of: {', '.join(sorted(valid_sources))}",
         )
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir(source) / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(
-        Panel.fit(
-            f"[{BOLD_PRIMARY}]{source.capitalize()} -> Memanto  {mode}[/{BOLD_PRIMARY}]",
-            border_style=PRIMARY,
-        )
-    )
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run(source, source.capitalize(), dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     progress(f"Extracting {path}")
@@ -723,6 +796,11 @@ def migrate_conversations(
 
             else:
                 export = _parse_gemini_archive(tmp_path)
+                if not export.get("memories"):
+                    _error(
+                        "No Gemini memories found in the archive.",
+                        hint="Ensure the ZIP contains a Gemini activity export (JSON or HTML) or per-conversation JSON files.",
+                    )
 
     except (SystemExit, typer.Exit):
         raise
@@ -739,59 +817,16 @@ def migrate_conversations(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = (
-        ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    )
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  "
-        f"[dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines.append("")
-        body_lines.append("[yellow]Dry run — no writes performed.[/yellow]")
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-
-    body_lines.append("")
-    body_lines.append(f"[dim]Run dir:[/dim] {run_dir}")
-    body_lines.append(f"[dim]Mapped preview:[/dim] {preview_path}")
-    if summary.errors:
-        body_lines.append(
-            f"[red]First error:[/red] {summary.errors[0]}  "
-            "[dim](see run dir for more)[/dim]"
-        )
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title=(
-                "[bold yellow]Dry run complete[/bold yellow]"
-                if dry_run
-                else "[bold green]Migration complete[/bold green]"
-            ),
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 
 def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
     """Normalize a Google Takeout Gemini ZIP into {memories: [...]}."""
     import json
+    import re
 
-    json_hits = list(tmp_path.rglob("My Activity.json"))
-    html_hits = list(tmp_path.rglob("My Activity.html"))
+    json_hits = list(tmp_path.rglob("*Activity*.json"))
+    html_hits = list(tmp_path.rglob("*Activity*.html"))
 
     if json_hits:
         json_activity = json_hits[0]
@@ -799,9 +834,10 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
         memories = []
         for entry in entries or []:
             title = entry.get("title") or ""
-            if not title.startswith("Prompted "):
+            m = re.match(r"prompted\s+", title, re.IGNORECASE)
+            if not m:
                 continue
-            prompt = title[len("Prompted "):]
+            prompt = title[m.end():]
             if not prompt.strip():
                 continue
             memories.append(
@@ -815,10 +851,9 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
     if html_hits:
         return _parse_gemini_html(html_hits[0])
 
-    # Per-conversation JSON files — exclude Takeout activity files
     candidates = [
         f for f in tmp_path.rglob("*.json")
-        if f.name not in ("My Activity.json",)
+        if not re.search(r"activity", f.name, re.IGNORECASE)
     ]
     memories = []
     for f in candidates:
@@ -892,15 +927,18 @@ def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
 
         def _flush_entry(self) -> None:
             text = " ".join(self._buf).strip()
-            # Normalize non-breaking spaces before matching
             normalized = text.replace("\xa0", " ")
             if not normalized:
                 return
-            ts_match = re.search(r"\d{1,2} \w+ \d{4}, \d{2}:\d{2}:\d{2} \w+", normalized)
+            ts_match = re.search(
+                r"(?:\d{1,2} \w+ \d{4}|\w+ \d{1,2}, \d{4}), \d{1,2}:\d{2}:\d{2}(?: [AP]M)?(?: \w+)?",
+                normalized,
+            )
             prompt = normalized[: ts_match.start()].strip() if ts_match else normalized.strip()
-            if not prompt.startswith("Prompted "):
+            prompted_match = re.match(r"prompted\s+", prompt, re.IGNORECASE)
+            if not prompted_match:
                 return
-            prompt = prompt[len("Prompted "):]
+            prompt = prompt[prompted_match.end():]
             if not prompt.strip():
                 return
             ts_str = ts_match.group() if ts_match else None
@@ -921,9 +959,9 @@ def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
             )
 
         def close(self) -> None:
+            super().close()
             if self._in_outer:
                 self._flush_entry()
-            super().close()
 
     parser = _ActivityParser()
     parser.feed(html_path.read_text(encoding="utf-8", errors="replace"))
@@ -1000,25 +1038,16 @@ def migrate_zep(
     ),
 ):
     """Migrate Zep Cloud graph edge facts into the active (or selected) Memanto agent."""
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("zep") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Zep -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("zep", "Zep", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     if file is not None:
         progress(f"Loading export from {file}")
-        export_path, export = file, load_export(file)
+        export = _load_export_or_exit(file)
     else:
         resolved_key = _resolve_provider_key("zep", api_key)
         try:
-            export_path, export = run_zep_export(resolved_key, run_dir, on_progress=progress)
+            _, export = run_zep_export(resolved_key, run_dir, on_progress=progress)
         except Exception as exc:
             _error(f"Zep export failed: {exc}")
 
@@ -1032,37 +1061,7 @@ def migrate_zep(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 @migrate_app.command("hindsight")
 def migrate_hindsight(
@@ -1103,53 +1102,19 @@ def migrate_hindsight(
     ),
 ):
     """Migrate a Hindsight memory bank into the active (or selected) Memanto agent."""
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("hindsight") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Hindsight -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("hindsight", "Hindsight", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     if file is not None:
         progress(f"Loading export from {file}")
-        export_path, export = file, load_export(file)
+        export = _load_export_or_exit(file)
     else:
-        resolved_key: str
-        if api_key and api_key.strip():
-            resolved_key = api_key.strip()
-            config_manager._set_env_var("HINDSIGHT_API_KEY", resolved_key)
-        else:
-            stored = os.environ.get("HINDSIGHT_API_KEY", "").strip()
-            if stored:
-                resolved_key = stored
-            else:
-                console.print(
-                    Panel.fit(
-                        f"[{BOLD_PRIMARY}]Hindsight API key[/{BOLD_PRIMARY}]\n"
-                        "[dim]Get yours from your Hindsight dashboard[/dim]",
-                        border_style=PRIMARY,
-                    )
-                )
-                entered = typer.prompt("  Enter your Hindsight API key", hide_input=True)
-                if not entered or not entered.strip():
-                    _error(
-                        "Hindsight API key is required.",
-                        hint="Pass --api-key or set HINDSIGHT_API_KEY in your environment.",
-                    )
-                config_manager._set_env_var("HINDSIGHT_API_KEY", entered.strip())
-                console.print("[green]  ✓ API key saved to ~/.memanto/.env[/green]")
-                resolved_key = entered.strip()
-
+        resolved_key = _resolve_provider_key("hindsight", api_key)
         try:
             kwargs: dict = {"bank_id": bank_id, "on_progress": progress}
             if base_url:
                 kwargs["base_url"] = base_url
-            export_path, export = run_hindsight_export(resolved_key, run_dir, **kwargs)
+            _, export = run_hindsight_export(resolved_key, run_dir, **kwargs)
         except Exception as exc:
             _error(f"Hindsight export failed: {exc}")
 
@@ -1163,37 +1128,7 @@ def migrate_hindsight(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 
 @migrate_app.command("notion")
@@ -1227,16 +1162,7 @@ def migrate_notion(
 
     import yaml
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("notion") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Notion -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("notion", "Notion", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     progress(f"Extracting {file}")
@@ -1254,7 +1180,8 @@ def migrate_notion(
                         end = raw.find("\n---\n", 4)
                         if end != -1:
                             try:
-                                frontmatter = yaml.safe_load(raw[4:end]) or {}
+                                parsed = yaml.safe_load(raw[4:end])
+                                frontmatter = parsed if isinstance(parsed, dict) else {}
                             except Exception:
                                 frontmatter = {}
                             body = raw[end + 5:]
@@ -1285,37 +1212,7 @@ def migrate_notion(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 
 @migrate_app.command("obsidian")
@@ -1341,16 +1238,7 @@ def migrate_obsidian(
             hint="Provide a path to your Obsidian vault directory.",
         )
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("obsidian") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Obsidian -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("obsidian", "Obsidian", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     progress(f"Scanning vault at {file}")
@@ -1363,7 +1251,8 @@ def migrate_obsidian(
             end = raw.find("\n---\n", 4)
             if end != -1:
                 try:
-                    frontmatter = yaml.safe_load(raw[4:end]) or {}
+                    parsed = yaml.safe_load(raw[4:end])
+                    frontmatter = parsed if isinstance(parsed, dict) else {}
                 except Exception:
                     frontmatter = {}
                 body = raw[end + 5:]
@@ -1392,37 +1281,7 @@ def migrate_obsidian(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 
 @migrate_app.command("langgraph")
@@ -1431,7 +1290,7 @@ def migrate_langgraph(
         ...,
         "--file",
         "-f",
-        help="LangGraph store dump JSON (from scripts/dump_langgraph.py).",
+        help="LangGraph store dump JSON (from examples/migrations/ai-conversations/scripts/dump_langgraph.py).",
     ),
     agent: str | None = typer.Option(
         None,
@@ -1451,20 +1310,11 @@ def migrate_langgraph(
         memanto migrate langgraph --file langgraph_dump.json --dry-run
         memanto migrate langgraph --file langgraph_dump.json --agent my-agent
     """
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("langgraph") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]LangGraph -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("langgraph", "LangGraph", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     progress(f"Loading export from {file}")
-    export = load_export(file)
+    export = _load_export_or_exit(file)
 
     progress("Mapping source records onto Memanto schema...")
     client = None if dry_run else get_client()
@@ -1476,37 +1326,7 @@ def migrate_langgraph(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
 
 
 @migrate_app.command("chroma")
@@ -1559,16 +1379,7 @@ def migrate_chroma(
             hint="Pass --collection or set CHROMA_COLLECTION in your environment.",
         )
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_dir = config_manager.get_migrate_dir("chroma") / stamp
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    mode = "Dry run" if dry_run else "Migrate"
-    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Chroma -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
-
-    def progress(msg: str) -> None:
-        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
-
+    run_dir, progress = _start_run("chroma", "Chroma", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
     progress(f"Connecting to Chroma at {host}:{port}")
@@ -1580,7 +1391,7 @@ def migrate_chroma(
 
     progress(f"Fetching documents from collection '{collection}'")
     try:
-        result = col.get(include=["documents", "metadatas", "embeddings"])
+        result = col.get(include=["documents", "metadatas"])
     except Exception as exc:
         _error(f"Failed to fetch Chroma collection: {exc}")
 
@@ -1608,34 +1419,4 @@ def migrate_chroma(
         dry_run=dry_run,
         on_progress=progress,
     )
-
-    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
-
-    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
-    body_lines = [
-        f"[dim]Source records:[/dim] {summary.source_count}",
-        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
-        f"[dim]Type breakdown:[/dim] {type_lines}",
-    ]
-    if dry_run:
-        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
-    else:
-        body_lines.append(
-            f"[dim]Imported:[/dim] {summary.imported}  "
-            f"[dim]Failed:[/dim] {summary.failed}  "
-            f"[dim]Batches:[/dim] {summary.batches}"
-        )
-        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
-    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
-    if summary.errors:
-        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
-
-    border = WARNING if summary.failed else SUCCESS
-    console.print()
-    console.print(
-        Panel(
-            "\n".join(body_lines),
-            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
-            border_style=border,
-        )
-    )
+    _render_summary(summary, rows, run_dir, target_agent, dry_run)
