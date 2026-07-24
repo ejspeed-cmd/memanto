@@ -288,6 +288,29 @@ def _render_savings_report(
     return report_path
 
 
+def _render_simple_report(
+    *,
+    provider: str,
+    summary: Any,
+    run_dir: Path,
+) -> Path:
+    type_lines = "\n".join(
+        f"- **{k}**: {v}" for k, v in sorted(summary.type_counts.items())
+    ) or "- (none)"
+    md = (
+        f"# Migration Report — {provider.capitalize()}\n\n"
+        f"| Metric | Value |\n"
+        f"|--------|-------|\n"
+        f"| Source records | {summary.source_count} |\n"
+        f"| Mapped memories | {summary.mapped_count} |\n"
+        f"| Skipped | {summary.skipped} |\n\n"
+        f"## Type breakdown\n\n{type_lines}\n"
+    )
+    report_path = run_dir / "migrate-report.md"
+    report_path.write_text(md, encoding="utf-8")
+    return report_path
+
+
 def _start_run(
     provider: str,
     label: str,
@@ -398,7 +421,7 @@ def _load_or_export(
     bundle = _PROVIDER_BUNDLES[provider]
     if file is not None:
         progress(f"Loading export from {file}")
-        return file, load_export(file)
+        return file, _load_export_or_exit(file)
 
     key = _resolve_provider_key(provider, api_key)
     try:
@@ -758,6 +781,11 @@ def migrate_conversations(
         "--dry-run",
         help="Preview the mapping without writing.",
     ),
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Also write the savings report on a real run.",
+    ),
 ):
     """Import ChatGPT, Claude or Gemini conversation exports into Memanto.
 
@@ -832,7 +860,10 @@ def migrate_conversations(
         dry_run=dry_run,
         on_progress=progress,
     )
-    _render_summary(summary, rows, run_dir, target_agent, dry_run)
+    report_path: Path | None = None
+    if dry_run or report:
+        report_path = _render_simple_report(provider=source, summary=summary, run_dir=run_dir)
+    _render_summary(summary, rows, run_dir, target_agent, dry_run, report_path=report_path)
 
 
 def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
@@ -853,6 +884,8 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
         if not isinstance(entries, list):
             continue
         for entry in entries:
+            if not isinstance(entry, dict):
+                continue
             title = entry.get("title") or ""
             m = re.match(r"prompted\s+", title, re.IGNORECASE)
             if not m:
@@ -1058,6 +1091,11 @@ def migrate_zep(
         "--dry-run",
         help="Preview the mapping without writing.",
     ),
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Also write the savings report on a real run.",
+    ),
 ):
     """Migrate Zep Cloud graph edge facts into the active (or selected) Memanto agent."""
     run_dir, progress = _start_run("zep", "Zep", dry_run)
@@ -1083,7 +1121,10 @@ def migrate_zep(
         dry_run=dry_run,
         on_progress=progress,
     )
-    _render_summary(summary, rows, run_dir, target_agent, dry_run)
+    report_path: Path | None = None
+    if dry_run or report:
+        report_path = _render_simple_report(provider="zep", summary=summary, run_dir=run_dir)
+    _render_summary(summary, rows, run_dir, target_agent, dry_run, report_path=report_path)
 
 @migrate_app.command("hindsight")
 def migrate_hindsight(
@@ -1122,6 +1163,11 @@ def migrate_hindsight(
         "--dry-run",
         help="Preview the mapping without writing.",
     ),
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Also write the savings report on a real run.",
+    ),
 ):
     """Migrate a Hindsight memory bank into the active (or selected) Memanto agent."""
     run_dir, progress = _start_run("hindsight", "Hindsight", dry_run)
@@ -1150,7 +1196,10 @@ def migrate_hindsight(
         dry_run=dry_run,
         on_progress=progress,
     )
-    _render_summary(summary, rows, run_dir, target_agent, dry_run)
+    report_path: Path | None = None
+    if dry_run or report:
+        report_path = _render_simple_report(provider="hindsight", summary=summary, run_dir=run_dir)
+    _render_summary(summary, rows, run_dir, target_agent, dry_run, report_path=report_path)
 
 
 @migrate_app.command("notion")
@@ -1226,8 +1275,8 @@ def migrate_notion(
                             "filename_stem": md_file.stem,
                         }
                     )
-    except zipfile.BadZipFile:
-        _error(f"Cannot read ZIP file: {file}")
+    except (zipfile.BadZipFile, OSError) as exc:
+        _error(f"Cannot read ZIP file: {exc}")
 
     export: dict = {"memories": memories}
 
@@ -1335,6 +1384,11 @@ def migrate_langgraph(
         "--dry-run",
         help="Preview the mapping without writing.",
     ),
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Also write the savings report on a real run.",
+    ),
 ):
     """Migrate a LangGraph store dump into the active (or selected) Memanto agent.
 
@@ -1358,7 +1412,10 @@ def migrate_langgraph(
         dry_run=dry_run,
         on_progress=progress,
     )
-    _render_summary(summary, rows, run_dir, target_agent, dry_run)
+    report_path: Path | None = None
+    if dry_run or report:
+        report_path = _render_simple_report(provider="langgraph", summary=summary, run_dir=run_dir)
+    _render_summary(summary, rows, run_dir, target_agent, dry_run, report_path=report_path)
 
 
 @migrate_app.command("chroma")
