@@ -109,5 +109,5 @@ temp/
 # npm pack output
 *.tgz
 # Data files
-takeout-*
-data-*
+/takeout-*
+/data-*

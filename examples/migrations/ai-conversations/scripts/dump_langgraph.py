@@ -53,10 +53,10 @@ async def _dump(store, postgres: bool) -> list[dict]:
 
 
 async def _seed_demo(store) -> None:
-    await store.aput(("user", "samuel", "memories"), "pref-editor", {"content": "Samuel uses VSCode with dark mode as his primary editor."})
-    await store.aput(("user", "samuel", "memories"), "pref-lang", {"content": "Samuel prefers Python and FastAPI over JavaScript."})
-    await store.aput(("user", "samuel", "facts"), "location", "Samuel lives in Lagos, Nigeria.")
-    await store.aput(("project", "memanto"), "goal-1", {"content": "Build an open-source agentic memory layer.", "priority": "high"})
+    await store.aput(("user", "alice", "memories"), "pref-editor", {"content": "Alice uses VSCode with dark mode as her primary editor."})
+    await store.aput(("user", "alice", "memories"), "pref-lang", {"content": "Alice prefers Python and FastAPI over JavaScript."})
+    await store.aput(("user", "alice", "facts"), "location", {"content": "Alice is based in Berlin, Germany."})
+    await store.aput(("project", "example-project"), "goal-1", {"content": "Build an open-source agentic memory layer.", "priority": "high"})
 
 
 async def main(output: str) -> None:
@@ -65,8 +65,11 @@ async def main(output: str) -> None:
     if not postgres:
         print("No LANGGRAPH_POSTGRES_URI set — using InMemoryStore with demo data.", file=sys.stderr)
         await _seed_demo(store)
-
-    items = await _dump(store, postgres)
+        items = await _dump(store, postgres)
+    else:
+        async with store as s:
+            await s.setup()
+            items = await _dump(s, postgres)
 
     export = {"items": items}
     with open(output, "w", encoding="utf-8") as f:

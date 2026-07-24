@@ -63,6 +63,7 @@ from memanto.cli.analyze.supermemory_compare import (
     compute_metrics as compute_supermemory_metrics,
 )
 from memanto.cli.analyze.supermemory_export import run_supermemory_export
+from memanto.cli.analyze.zep_export import run_zep_export
 from memanto.cli.commands._shared import (
     BOLD_PRIMARY,
     BRIGHT,
@@ -112,6 +113,12 @@ _PROVIDER_BUNDLES: dict[str, dict[str, Any]] = {
 }
 
 
+_PROVIDER_LABELS: dict[str, str] = {
+    **{k: v["label"] for k, v in _PROVIDER_BUNDLES.items()},
+    "zep": "Zep",
+}
+
+
 def _resolve_provider_key(
     provider: str,
     api_key: str | None,
@@ -136,9 +143,15 @@ def _resolve_provider_key(
             "https://supermemory.ai/docs",
             "SUPERMEMORY_API_KEY",
         ),
+        "zep": (
+            config_manager.get_zep_api_key,
+            config_manager.set_zep_api_key,
+            "https://app.getzep.com",
+            "ZEP_API_KEY",
+        ),
     }
     get_fn, set_fn, docs_url, env_name = getters[provider]
-    label = _PROVIDER_BUNDLES[provider]["label"]
+    label = _PROVIDER_LABELS[provider]
 
     if api_key and api_key.strip():
         set_fn(api_key.strip())
@@ -619,6 +632,303 @@ def migrate_okf(
     )
 
 
+@migrate_app.command("conversations")
+def migrate_conversations(
+    path: Path = typer.Argument(
+        ...,
+        help="Path to the provider export ZIP file.",
+    ),
+    source: str = typer.Option(
+        ...,
+        "--source",
+        "-s",
+        help="Source provider: chatgpt, claude, or gemini.",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id (defaults to the active agent).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Import ChatGPT, Claude or Gemini conversation exports into Memanto.
+
+    Examples:
+        memanto migrate conversations chatgpt_export.zip --source chatgpt --dry-run
+        memanto migrate conversations claude_export.zip --source claude --agent my-agent
+        memanto migrate conversations gemini_export.zip --source gemini
+    """
+    import html
+    import html.parser
+    import json
+    import re
+    import tempfile
+    import zipfile
+
+    valid_sources = {"chatgpt", "claude", "gemini"}
+    if source not in valid_sources:
+        _error(
+            f"Invalid --source '{source}'.",
+            hint=f"Choose one of: {', '.join(sorted(valid_sources))}",
+        )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir(source) / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(
+        Panel.fit(
+            f"[{BOLD_PRIMARY}]{source.capitalize()} -> Memanto  {mode}[/{BOLD_PRIMARY}]",
+            border_style=PRIMARY,
+        )
+    )
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    progress(f"Extracting {path}")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                with zipfile.ZipFile(path) as zf:
+                    zf.extractall(tmp)
+            except zipfile.BadZipFile:
+                _error(f"Cannot read ZIP file: {path}")
+
+            tmp_path = Path(tmp)
+            export: dict[str, Any]
+
+            if source in ("chatgpt", "claude"):
+                json_file = tmp_path / "conversations.json"
+                if not json_file.exists():
+                    candidates = list(tmp_path.rglob("conversations.json"))
+                    if not candidates:
+                        _error("conversations.json not found in ZIP.")
+                    json_file = candidates[0]
+                raw = json.loads(json_file.read_text(encoding="utf-8"))
+                if isinstance(raw, list):
+                    export = {"memories": raw}
+                else:
+                    export = raw
+
+            else:
+                export = _parse_gemini_archive(tmp_path)
+
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _error(f"Failed to process ZIP: {exc}")
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider=source,
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = (
+        ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    )
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  "
+        f"[dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines.append("")
+        body_lines.append("[yellow]Dry run — no writes performed.[/yellow]")
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+
+    body_lines.append("")
+    body_lines.append(f"[dim]Run dir:[/dim] {run_dir}")
+    body_lines.append(f"[dim]Mapped preview:[/dim] {preview_path}")
+    if summary.errors:
+        body_lines.append(
+            f"[red]First error:[/red] {summary.errors[0]}  "
+            "[dim](see run dir for more)[/dim]"
+        )
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title=(
+                "[bold yellow]Dry run complete[/bold yellow]"
+                if dry_run
+                else "[bold green]Migration complete[/bold green]"
+            ),
+            border_style=border,
+        )
+    )
+
+
+def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
+    """Normalize a Google Takeout Gemini ZIP into {memories: [...]}."""
+    import json
+
+    json_hits = list(tmp_path.rglob("My Activity.json"))
+    html_hits = list(tmp_path.rglob("My Activity.html"))
+
+    if json_hits:
+        json_activity = json_hits[0]
+        entries = json.loads(json_activity.read_text(encoding="utf-8"))
+        memories = []
+        for entry in entries or []:
+            title = entry.get("title") or ""
+            if not title.startswith("Prompted "):
+                continue
+            prompt = title[len("Prompted "):]
+            if not prompt.strip():
+                continue
+            memories.append(
+                {
+                    "createdTime": entry.get("time"),
+                    "messages": [{"role": "user", "text": prompt}],
+                }
+            )
+        return {"memories": memories}
+
+    if html_hits:
+        return _parse_gemini_html(html_hits[0])
+
+    # Per-conversation JSON files — exclude Takeout activity files
+    candidates = [
+        f for f in tmp_path.rglob("*.json")
+        if f.name not in ("My Activity.json",)
+    ]
+    memories = []
+    for f in candidates:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "messages" in item:
+                        memories.append(item)
+            elif isinstance(data, dict) and "messages" in data:
+                memories.append(data)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return {"memories": memories}
+
+
+def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
+    """Parse a Gemini HTML activity log into {memories: [...]}."""
+    import html.parser
+    import re
+
+    try:
+        from dateutil.parser import parse as parse_dt_str
+    except ImportError:
+        parse_dt_str = None
+
+    class _ActivityParser(html.parser.HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.entries: list[dict[str, Any]] = []
+            self._in_outer = False
+            self._first_content_captured = False
+            self._in_first_content = False
+            self._content_nesting = 0
+            self._buf: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list) -> None:
+            cls = dict(attrs).get("class", "")
+            if tag == "div" and "outer-cell" in cls:
+                if self._in_outer:
+                    self._flush_entry()
+                self._in_outer = True
+                self._first_content_captured = False
+                self._in_first_content = False
+                self._buf = []
+                return
+            if (
+                self._in_outer
+                and not self._first_content_captured
+                and tag == "div"
+                and "content-cell" in cls
+            ):
+                self._in_first_content = True
+                self._content_nesting = 1
+                self._buf = []
+                return
+            if self._in_first_content and tag == "div":
+                self._content_nesting += 1
+
+        def handle_endtag(self, tag: str) -> None:
+            if self._in_first_content and tag == "div":
+                self._content_nesting -= 1
+                if self._content_nesting <= 0:
+                    self._in_first_content = False
+                    self._first_content_captured = True
+
+        def handle_data(self, data: str) -> None:
+            if self._in_first_content:
+                self._buf.append(data)
+
+        def _flush_entry(self) -> None:
+            text = " ".join(self._buf).strip()
+            # Normalize non-breaking spaces before matching
+            normalized = text.replace("\xa0", " ")
+            if not normalized:
+                return
+            ts_match = re.search(r"\d{1,2} \w+ \d{4}, \d{2}:\d{2}:\d{2} \w+", normalized)
+            prompt = normalized[: ts_match.start()].strip() if ts_match else normalized.strip()
+            if not prompt.startswith("Prompted "):
+                return
+            prompt = prompt[len("Prompted "):]
+            if not prompt.strip():
+                return
+            ts_str = ts_match.group() if ts_match else None
+            created_time: str | None = None
+            if ts_str and parse_dt_str is not None:
+                try:
+                    dt = parse_dt_str(ts_str)
+                    created_time = dt.isoformat()
+                except Exception:
+                    created_time = ts_str
+            else:
+                created_time = ts_str
+            self.entries.append(
+                {
+                    "createdTime": created_time,
+                    "messages": [{"role": "user", "text": prompt}],
+                }
+            )
+
+        def close(self) -> None:
+            if self._in_outer:
+                self._flush_entry()
+            super().close()
+
+    parser = _ActivityParser()
+    parser.feed(html_path.read_text(encoding="utf-8", errors="replace"))
+    parser.close()
+    return {"memories": parser.entries}
+
+
 @migrate_app.command("supermemory")
 def migrate_supermemory(
     api_key: str | None = typer.Option(
@@ -658,4 +968,102 @@ def migrate_supermemory(
         agent=agent,
         dry_run=dry_run,
         report=report,
+    )
+
+
+@migrate_app.command("zep")
+def migrate_zep(
+    api_key: str | None = typer.Option(
+        None,
+        "--api-key",
+        envvar="ZEP_API_KEY",
+        help="Zep API key (saved to ~/.memanto/.env)",
+    ),
+    user_id: str | None = typer.Option(
+        None,
+        "--user-id",
+        envvar="ZEP_USER_ID",
+        help="Zep user ID (optional, exports all users when absent)",
+    ),
+    file: Path | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Existing Zep export JSON (skip live export)",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Migrate Zep Cloud graph edge facts into the active (or selected) Memanto agent."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("zep") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Zep -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    if file is not None:
+        progress(f"Loading export from {file}")
+        export_path, export = file, load_export(file)
+    else:
+        resolved_key = _resolve_provider_key("zep", api_key)
+        try:
+            export_path, export = run_zep_export(resolved_key, run_dir, on_progress=progress)
+        except Exception as exc:
+            _error(f"Zep export failed: {exc}")
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="zep",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
     )

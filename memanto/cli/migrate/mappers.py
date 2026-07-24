@@ -675,6 +675,10 @@ def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
             if not content:
                 continue
             rating = edge.get("score") or edge.get("relevance")
+            try:
+                confidence = float(rating) if rating is not None else 0.8
+            except (TypeError, ValueError):
+                confidence = 0.8
             footer = _format_supporting_data(
                 [
                     ("Edge name", edge.get("name")),
@@ -688,7 +692,7 @@ def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
                     "content": _attach_footer(content, footer),
                     "type": "fact",
                     "tags": [],
-                    "confidence": float(rating) if rating is not None else 0.8,
+                    "confidence": confidence,
                     "source": "zep",
                     "source_ref": edge.get("uuid"),
                     "provenance": "imported",
@@ -696,7 +700,7 @@ def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
                     "updated_at": migrated_at,
                 }
             )
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, TypeError):
             continue
 
     return rows
