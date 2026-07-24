@@ -1,0 +1,24 @@
+╭─────────────────────────────╮
+│ Chatgpt -> Memanto  Dry run │
+╰─────────────────────────────╯
+  … Extracting 
+examples/migrations/ai-conversations/sample_data/chatgpt_export.
+zip
+  … Mapping source records onto Memanto schema...
+
+╭────────────────────── Dry run complete ──────────────────────╮
+│ Source records: 5                                            │
+│ Mapped memories: 5  (skipped 0 empty)                        │
+│ Type breakdown: auto: 5                                      │
+│                                                              │
+│ Dry run — no writes performed.                               │
+│                                                              │
+│ Run dir:                                                     │
+│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034        │
+│ Mapped preview:                                              │
+│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034/mapped │
+│ _preview.json                                                │
+│ Savings report:                                              │
+│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034/migrat │
+│ e-report.md                                                  │
+╰──────────────────────────────────────────────────────────────╯

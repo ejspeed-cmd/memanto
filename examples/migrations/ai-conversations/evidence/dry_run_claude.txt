@@ -1,0 +1,24 @@
+╭────────────────────────────╮
+│ Claude -> Memanto  Dry run │
+╰────────────────────────────╯
+  … Extracting 
+examples/migrations/ai-conversations/sample_data/claude_export.z
+ip
+  … Mapping source records onto Memanto schema...
+
+╭────────────────────── Dry run complete ──────────────────────╮
+│ Source records: 5                                            │
+│ Mapped memories: 5  (skipped 0 empty)                        │
+│ Type breakdown: auto: 5                                      │
+│                                                              │
+│ Dry run — no writes performed.                               │
+│                                                              │
+│ Run dir:                                                     │
+│ /home/samuel/.memanto/migrate/claude/20260724_230035         │
+│ Mapped preview:                                              │
+│ /home/samuel/.memanto/migrate/claude/20260724_230035/mapped_ │
+│ preview.json                                                 │
+│ Savings report:                                              │
+│ /home/samuel/.memanto/migrate/claude/20260724_230035/migrate │
+│ -report.md                                                   │
+╰──────────────────────────────────────────────────────────────╯
