@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import os
 import typer
 from rich.panel import Panel
 
@@ -63,6 +64,7 @@ from memanto.cli.analyze.supermemory_compare import (
     compute_metrics as compute_supermemory_metrics,
 )
 from memanto.cli.analyze.supermemory_export import run_supermemory_export
+from memanto.cli.analyze.hindsight_export import run_hindsight_export
 from memanto.cli.analyze.zep_export import run_zep_export
 from memanto.cli.commands._shared import (
     BOLD_PRIMARY,
@@ -722,7 +724,7 @@ def migrate_conversations(
             else:
                 export = _parse_gemini_archive(tmp_path)
 
-    except SystemExit:
+    except (SystemExit, typer.Exit):
         raise
     except Exception as exc:
         _error(f"Failed to process ZIP: {exc}")
@@ -979,12 +981,6 @@ def migrate_zep(
         envvar="ZEP_API_KEY",
         help="Zep API key (saved to ~/.memanto/.env)",
     ),
-    user_id: str | None = typer.Option(
-        None,
-        "--user-id",
-        envvar="ZEP_USER_ID",
-        help="Zep user ID (optional, exports all users when absent)",
-    ),
     file: Path | None = typer.Option(
         None,
         "--file",
@@ -1030,6 +1026,582 @@ def migrate_zep(
     client = None if dry_run else get_client()
     summary, rows = run_migration(
         provider="zep",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
+    )
+
+@migrate_app.command("hindsight")
+def migrate_hindsight(
+    api_key: str | None = typer.Option(
+        None,
+        "--api-key",
+        envvar="HINDSIGHT_API_KEY",
+        help="Hindsight API key (saved to ~/.memanto/.env)",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        envvar="HINDSIGHT_BASE_URL",
+        help="Hindsight base URL (e.g. https://api.hindsight.vectorize.io)",
+    ),
+    bank_id: str | None = typer.Option(
+        None,
+        "--bank-id",
+        envvar="HINDSIGHT_BANK_ID",
+        help="Hindsight bank ID (optional, exports all banks when absent)",
+    ),
+    file: Path | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Existing Hindsight export JSON (skip live export)",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Migrate a Hindsight memory bank into the active (or selected) Memanto agent."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("hindsight") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Hindsight -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    if file is not None:
+        progress(f"Loading export from {file}")
+        export_path, export = file, load_export(file)
+    else:
+        resolved_key: str
+        if api_key and api_key.strip():
+            resolved_key = api_key.strip()
+            config_manager._set_env_var("HINDSIGHT_API_KEY", resolved_key)
+        else:
+            stored = os.environ.get("HINDSIGHT_API_KEY", "").strip()
+            if stored:
+                resolved_key = stored
+            else:
+                console.print(
+                    Panel.fit(
+                        f"[{BOLD_PRIMARY}]Hindsight API key[/{BOLD_PRIMARY}]\n"
+                        "[dim]Get yours from your Hindsight dashboard[/dim]",
+                        border_style=PRIMARY,
+                    )
+                )
+                entered = typer.prompt("  Enter your Hindsight API key", hide_input=True)
+                if not entered or not entered.strip():
+                    _error(
+                        "Hindsight API key is required.",
+                        hint="Pass --api-key or set HINDSIGHT_API_KEY in your environment.",
+                    )
+                config_manager._set_env_var("HINDSIGHT_API_KEY", entered.strip())
+                console.print("[green]  ✓ API key saved to ~/.memanto/.env[/green]")
+                resolved_key = entered.strip()
+
+        try:
+            kwargs: dict = {"bank_id": bank_id, "on_progress": progress}
+            if base_url:
+                kwargs["base_url"] = base_url
+            export_path, export = run_hindsight_export(resolved_key, run_dir, **kwargs)
+        except Exception as exc:
+            _error(f"Hindsight export failed: {exc}")
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="hindsight",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
+    )
+
+
+@migrate_app.command("notion")
+def migrate_notion(
+    file: Path = typer.Option(
+        ...,
+        "--file",
+        "-f",
+        help="Notion export ZIP (from Settings > Export content > Markdown & CSV).",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id (defaults to the active agent).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Migrate a Notion export ZIP into the active (or selected) Memanto agent.
+
+    Examples:
+        memanto migrate notion --file notion_export.zip --dry-run
+        memanto migrate notion --file notion_export.zip --agent my-agent
+    """
+    import tempfile
+    import zipfile
+
+    import yaml
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("notion") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Notion -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    progress(f"Extracting {file}")
+    try:
+        with zipfile.ZipFile(file) as zf:
+            with tempfile.TemporaryDirectory() as tmp:
+                zf.extractall(tmp)
+                tmp_path = Path(tmp)
+                memories: list[dict] = []
+                for md_file in tmp_path.rglob("*.md"):
+                    raw = md_file.read_text(encoding="utf-8", errors="replace")
+                    frontmatter: dict = {}
+                    body = raw
+                    if raw.startswith("---\n"):
+                        end = raw.find("\n---\n", 4)
+                        if end != -1:
+                            try:
+                                frontmatter = yaml.safe_load(raw[4:end]) or {}
+                            except Exception:
+                                frontmatter = {}
+                            body = raw[end + 5:]
+                    body = body.strip()
+                    if not body and not frontmatter.get("title"):
+                        continue
+                    memories.append(
+                        {
+                            "title": frontmatter.get("title", ""),
+                            "body": body,
+                            "tags": frontmatter.get("tags") or [],
+                            "created_at": frontmatter.get("created_at"),
+                            "filename_stem": md_file.stem,
+                        }
+                    )
+    except zipfile.BadZipFile:
+        _error(f"Cannot read ZIP file: {file}")
+
+    export: dict = {"memories": memories}
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="notion",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
+    )
+
+
+@migrate_app.command("obsidian")
+def migrate_obsidian(
+    file: Path = typer.Argument(
+        ...,
+        help="Path to the Obsidian vault directory.",
+    ),
+    agent: str | None = typer.Option(None, "--agent", "-a", help="Target Memanto agent id (defaults to the active agent)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview the mapping without writing."),
+):
+    """Migrate an Obsidian vault directory into the active (or selected) Memanto agent.
+
+    Examples:
+        memanto migrate obsidian /path/to/vault --dry-run
+        memanto migrate obsidian /path/to/vault --agent my-agent
+    """
+    import yaml
+
+    if not file.exists() or not file.is_dir():
+        _error(
+            f"Obsidian vault not found or is not a directory: {file}",
+            hint="Provide a path to your Obsidian vault directory.",
+        )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("obsidian") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Obsidian -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    progress(f"Scanning vault at {file}")
+    memories: list[dict] = []
+    for md_file in Path(file).rglob("*.md"):
+        raw = md_file.read_text(encoding="utf-8", errors="replace")
+        frontmatter: dict = {}
+        body = raw
+        if raw.startswith("---\n"):
+            end = raw.find("\n---\n", 4)
+            if end != -1:
+                try:
+                    frontmatter = yaml.safe_load(raw[4:end]) or {}
+                except Exception:
+                    frontmatter = {}
+                body = raw[end + 5:]
+        body = body.strip()
+        if not body and not frontmatter.get("title"):
+            continue
+        memories.append(
+            {
+                "title": frontmatter.get("title", ""),
+                "body": body,
+                "tags": frontmatter.get("tags") or [],
+                "created_at": frontmatter.get("created_at"),
+                "filename_stem": md_file.stem,
+            }
+        )
+
+    export: dict = {"memories": memories}
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="obsidian",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
+    )
+
+
+@migrate_app.command("langgraph")
+def migrate_langgraph(
+    file: Path = typer.Option(
+        ...,
+        "--file",
+        "-f",
+        help="LangGraph store dump JSON (from scripts/dump_langgraph.py).",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id (defaults to the active agent).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Migrate a LangGraph store dump into the active (or selected) Memanto agent.
+
+    Examples:
+        memanto migrate langgraph --file langgraph_dump.json --dry-run
+        memanto migrate langgraph --file langgraph_dump.json --agent my-agent
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("langgraph") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]LangGraph -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    progress(f"Loading export from {file}")
+    export = load_export(file)
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="langgraph",
+        export=export,
+        client=client,
+        agent_id=target_agent or "",
+        dry_run=dry_run,
+        on_progress=progress,
+    )
+
+    preview_path = write_preview(rows, run_dir / "mapped_preview.json")
+
+    type_lines = ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
+    body_lines = [
+        f"[dim]Source records:[/dim] {summary.source_count}",
+        f"[dim]Mapped memories:[/dim] {summary.mapped_count}  [dim](skipped {summary.skipped} empty)[/dim]",
+        f"[dim]Type breakdown:[/dim] {type_lines}",
+    ]
+    if dry_run:
+        body_lines += ["", "[yellow]Dry run — no writes performed.[/yellow]"]
+    else:
+        body_lines.append(
+            f"[dim]Imported:[/dim] {summary.imported}  "
+            f"[dim]Failed:[/dim] {summary.failed}  "
+            f"[dim]Batches:[/dim] {summary.batches}"
+        )
+        body_lines.append(f"[dim]Target agent:[/dim] {target_agent}")
+    body_lines += ["", f"[dim]Run dir:[/dim] {run_dir}", f"[dim]Mapped preview:[/dim] {preview_path}"]
+    if summary.errors:
+        body_lines.append(f"[red]First error:[/red] {summary.errors[0]}  [dim](see run dir for more)[/dim]")
+
+    border = WARNING if summary.failed else SUCCESS
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(body_lines),
+            title="[bold yellow]Dry run complete[/bold yellow]" if dry_run else "[bold green]Migration complete[/bold green]",
+            border_style=border,
+        )
+    )
+
+
+@migrate_app.command("chroma")
+def migrate_chroma(
+    collection: str | None = typer.Option(
+        None,
+        "--collection",
+        "-c",
+        envvar="CHROMA_COLLECTION",
+        help="Chroma collection name.",
+    ),
+    host: str = typer.Option(
+        "localhost",
+        "--host",
+        envvar="CHROMA_HOST",
+        help="Chroma host (default: localhost).",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        envvar="CHROMA_PORT",
+        help="Chroma port (default: 8000).",
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Target Memanto agent id (defaults to the active agent).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the mapping without writing.",
+    ),
+):
+    """Migrate a Chroma collection into the active (or selected) Memanto agent.
+
+    Examples:
+        memanto migrate chroma --collection my_docs --dry-run
+        memanto migrate chroma --collection my_docs --host 192.168.1.10 --port 8000 --agent my-agent
+    """
+    try:
+        import chromadb
+    except ImportError:
+        _error("chromadb is not installed. Run: pip install chromadb")
+
+    if not collection:
+        _error(
+            "No collection specified.",
+            hint="Pass --collection or set CHROMA_COLLECTION in your environment.",
+        )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = config_manager.get_migrate_dir("chroma") / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Dry run" if dry_run else "Migrate"
+    console.print(Panel.fit(f"[{BOLD_PRIMARY}]Chroma -> Memanto  {mode}[/{BOLD_PRIMARY}]", border_style=PRIMARY))
+
+    def progress(msg: str) -> None:
+        console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
+
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
+    progress(f"Connecting to Chroma at {host}:{port}")
+    try:
+        client_chroma = chromadb.HttpClient(host=host, port=port)
+        col = client_chroma.get_collection(collection)
+    except Exception as exc:
+        _error(f"Failed to connect to Chroma: {exc}")
+
+    progress(f"Fetching documents from collection '{collection}'")
+    try:
+        result = col.get(include=["documents", "metadatas", "embeddings"])
+    except Exception as exc:
+        _error(f"Failed to fetch Chroma collection: {exc}")
+
+    ids = result.get("ids") or []
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+
+    memories = [
+        {
+            "id": ids[i] if i < len(ids) else None,
+            "document": documents[i] if i < len(documents) else "",
+            "metadata": metadatas[i] if i < len(metadatas) else {},
+        }
+        for i in range(len(ids))
+    ]
+    export: dict = {"memories": memories}
+
+    progress("Mapping source records onto Memanto schema...")
+    client = None if dry_run else get_client()
+    summary, rows = run_migration(
+        provider="chroma",
         export=export,
         client=client,
         agent_id=target_agent or "",
