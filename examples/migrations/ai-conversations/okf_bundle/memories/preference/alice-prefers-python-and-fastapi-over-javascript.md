@@ -4,10 +4,10 @@ title: Alice prefers Python and FastAPI over JavaScript.
 description: Alice prefers Python and FastAPI over JavaScript.
 tags:
 - user/alice/memories
-timestamp: '2026-07-24T22:50:45.026594+00:00'
+timestamp: '2026-07-25T14:14:22.884527+00:00'
 resource: pref-lang
 x_memanto:
-  id: 3b8568d2-de40-4d4b-be56-9e273785b49f
+  id: fe74dd44-5293-47fd-be8d-76204701bab5
   confidence: 0.8
   provenance: imported
   source: langgraph

@@ -1,12 +1,12 @@
 ---
 type: index
 title: event
-timestamp: 2026-07-24T23:51:20
+timestamp: 2026-07-25T15:14:35
 ---
 
 # event (4)
 
-- [Open-source contribution workflow](open-source-contribution-workflow.md)
+- [Contributing to ripgrep](contributing-to-ripgrep.md)
+- [Open-sourcing an LLM memory benchmarking tool](open-sourcing-an-llm-memory-benchmarking-tool.md)
 - [Comparing LLM embedding models](comparing-llm-embedding-models.md)
-- [Semantic search with sentence-transformers](semantic-search-with-sentence-transformers.md)
 - [Setting up a Qdrant vector store](setting-up-a-qdrant-vector-store.md)

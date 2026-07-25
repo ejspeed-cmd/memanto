@@ -4,10 +4,10 @@ title: Alice is based in Berlin, Germany.
 description: Alice is based in Berlin, Germany.
 tags:
 - user/alice/facts
-timestamp: '2026-07-24T22:50:45.026620+00:00'
+timestamp: '2026-07-25T14:14:22.884542+00:00'
 resource: location
 x_memanto:
-  id: 9f5d4b31-d0c8-464f-90b5-38569d8c3baa
+  id: d3c92d50-2b3f-414d-bfb2-68e263971adb
   confidence: 0.8
   provenance: imported
   source: langgraph

@@ -6,7 +6,7 @@ description: Trying to shrink my Rust binary for a CLI tool. Currently 8 MB stri
 timestamp: '2025-07-18T14:46:02.396522+00:00'
 resource: beb79919-3f22-faf8-23be-d01d43cf2fde
 x_memanto:
-  id: 1a3f331b-81dd-49fe-81c5-0cac4c31c34c
+  id: 83fc6cd4-2b0b-456f-b3a5-12d01201222e
   confidence: 0.8
   provenance: imported
   source: claude

@@ -86,8 +86,9 @@ echo ""
 # We copy the result into the showcase directory so it's committable.
 echo ">> Step 6: export OKF bundle"
 EXPORT_NAME="${AGENT_ID}_okf"
+MEMANTO_EXPORT_DIR="${HOME}/.memanto/${EXPORT_NAME}"
+rm -rf "$MEMANTO_EXPORT_DIR"
 memanto memory export --okf --output "$EXPORT_NAME" --agent "$AGENT_ID"
-MEMANTO_EXPORT_DIR="${HOME}/.memanto/exports/${EXPORT_NAME}"
 echo ""
 
 echo ">> Copying OKF bundle to $OKF_DIR"

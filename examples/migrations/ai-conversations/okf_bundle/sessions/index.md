@@ -1,10 +1,10 @@
 ---
 type: index
 title: Sessions
-timestamp: 2026-07-24T23:51:20
+timestamp: 2026-07-25T15:14:35
 ---
 
-# Sessions (16)
+# Sessions (17)
 
 - [ai-conversations-showcase_2025-06-21_unknown_summary.md](ai-conversations-showcase_2025-06-21_unknown_summary.md)
 - [ai-conversations-showcase_2025-06-25_unknown_summary.md](ai-conversations-showcase_2025-06-25_unknown_summary.md)
@@ -22,3 +22,4 @@ timestamp: 2026-07-24T23:51:20
 - [ai-conversations-showcase_2025-09-02_unknown_summary.md](ai-conversations-showcase_2025-09-02_unknown_summary.md)
 - [ai-conversations-showcase_2025-10-09_unknown_summary.md](ai-conversations-showcase_2025-10-09_unknown_summary.md)
 - [ai-conversations-showcase_2026-07-24_unknown_summary.md](ai-conversations-showcase_2026-07-24_unknown_summary.md)
+- [ai-conversations-showcase_2026-07-25_unknown_summary.md](ai-conversations-showcase_2026-07-25_unknown_summary.md)

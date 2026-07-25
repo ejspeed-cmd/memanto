@@ -4,10 +4,10 @@ title: Build an open-source agentic memory layer.
 description: Build an open-source agentic memory layer.
 tags:
 - project/example-project
-timestamp: '2026-07-24T22:50:45.026642+00:00'
+timestamp: '2026-07-25T14:14:22.884555+00:00'
 resource: goal-1
 x_memanto:
-  id: b2c76ca2-29b7-45ec-b88c-69106135833a
+  id: 292dba2e-75e8-422f-a69e-38724c927219
   confidence: 0.8
   provenance: imported
   source: langgraph

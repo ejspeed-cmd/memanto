@@ -7,7 +7,7 @@ description: My LLM agent needs persistent memory across sessions. I am evaluati
 timestamp: '2025-06-21T16:33:11.410060+00:00'
 resource: 3139d32c-93cd-59bf-5c94-1cf0dc98d2c1
 x_memanto:
-  id: 34f63186-0c6c-44b7-a4e8-0c1f84f25966
+  id: 7cad4c68-5cdb-4600-8106-4119a5cb80d9
   confidence: 0.8
   provenance: imported
   source: chatgpt

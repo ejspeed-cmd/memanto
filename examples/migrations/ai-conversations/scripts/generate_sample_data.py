@@ -54,17 +54,12 @@ TITLES = [
     "Debugging lifetime errors in Rust",
     "Comparing LLM embedding models",
     "Setting up a Qdrant vector store",
-    "Writing a CLI tool in Rust",
-    "Open-source contribution workflow",
+    "Running Qdrant with Docker and Rust client",
+    "Open-sourcing an LLM memory benchmarking tool",
     "Optimizing Rust binary size",
-    "LangChain vs LlamaIndex tradeoffs",
-    "Semantic search with sentence-transformers",
-    "Memory architecture for AI agents",
-    "Rust error handling patterns",
-    "Building a RAG pipeline",
+    "Building a RAG pipeline for a codebase",
     "Contributing to ripgrep",
-    "Tokio task scheduling deep dive",
-    "Vector DB benchmarking methodology",
+    "Tracking memory provenance for AI agents",
 ]
 
 EXCHANGES = [

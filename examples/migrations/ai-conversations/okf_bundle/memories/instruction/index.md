@@ -1,12 +1,12 @@
 ---
 type: index
 title: instruction
-timestamp: 2026-07-24T23:51:20
+timestamp: 2026-07-25T15:14:35
 ---
 
 # instruction (4)
 
 - [Optimizing Rust binary size](optimizing-rust-binary-size.md)
-- [Memory architecture for AI agents](memory-architecture-for-ai-agents.md)
+- [Tracking memory provenance for AI agents](tracking-memory-provenance-for-ai-agents.md)
 - [Implementing async Rust with Tokio](implementing-async-rust-with-tokio.md)
-- [LangChain vs LlamaIndex tradeoffs](langchain-vs-llamaindex-tradeoffs.md)
+- [Building a RAG pipeline for a codebase](building-a-rag-pipeline-for-a-codebase.md)

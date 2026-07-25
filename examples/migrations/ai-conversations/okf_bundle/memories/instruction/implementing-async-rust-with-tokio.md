@@ -6,7 +6,7 @@ description: I am working on a Rust library for async file I/O using Tokio. The 
 timestamp: '2025-06-28T17:56:59.261382+00:00'
 resource: 23b8c1e9-3924-56de-3eb1-3b9046685257
 x_memanto:
-  id: 4e4b59e1-5f67-4e7a-9bee-c81a5e0d2f79
+  id: 397092bd-f569-4845-930c-fc1361086f11
   confidence: 0.8
   provenance: imported
   source: chatgpt

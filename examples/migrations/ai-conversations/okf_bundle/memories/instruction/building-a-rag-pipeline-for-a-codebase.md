@@ -1,12 +1,12 @@
 ---
 type: instruction
-title: LangChain vs LlamaIndex tradeoffs
+title: Building a RAG pipeline for a codebase
 description: Building a RAG pipeline for a codebase. Should I chunk by file, by function,
   or by token window?
 timestamp: '2025-07-27T21:34:33.592529+00:00'
 resource: 77d21e02-ff01-cf99-988c-24c961b1cd22
 x_memanto:
-  id: 74dcd721-5bd7-4fb2-a772-a582ac3a1f78
+  id: 4d5f2d7c-6c76-41b6-8ccc-b5ef637ad26c
   confidence: 0.8
   provenance: imported
   source: claude
@@ -18,6 +18,6 @@ Building a RAG pipeline for a codebase. Should I chunk by file, by function, or 
 
 ---
 [Supporting data]
-- Conversation: LangChain vs LlamaIndex tradeoffs
+- Conversation: Building a RAG pipeline for a codebase
 - Conversation id: ae270da7-02f0-6b90-f143-262fdc5c0eed
 - Message id: 77d21e02-ff01-cf99-988c-24c961b1cd22

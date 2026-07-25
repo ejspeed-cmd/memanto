@@ -7,7 +7,7 @@ description: Comparing text-embedding-3-small vs bge-m3 for a semantic search in
 timestamp: '2025-07-08T08:12:02.211448+00:00'
 resource: 5be6128e-18c2-6797-6142-ea7d17be3111
 x_memanto:
-  id: c21489b7-e933-4160-b02e-802edca500c0
+  id: d6a2d24b-dabd-415e-b81d-7356d142eaa1
   confidence: 0.8
   provenance: imported
   source: chatgpt

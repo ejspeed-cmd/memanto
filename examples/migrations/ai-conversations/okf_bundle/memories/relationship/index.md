@@ -1,10 +1,10 @@
 ---
 type: index
 title: relationship
-timestamp: 2026-07-24T23:51:20
+timestamp: 2026-07-25T15:14:35
 ---
 
 # relationship (2)
 
 - [How do I set up Qdrant locally with Docker and connect it from a Rust client?](how-do-i-set-up-qdrant-locally-with-docker-and-connect-it-fr.md)
-- [Writing a CLI tool in Rust](writing-a-cli-tool-in-rust.md)
+- [Running Qdrant with Docker and Rust client](running-qdrant-with-docker-and-rust-client.md)
