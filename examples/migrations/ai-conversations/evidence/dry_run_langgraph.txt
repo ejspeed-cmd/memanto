@@ -1,7 +1,7 @@
 ╭───────────────────────────────╮
 │ LangGraph -> Memanto  Dry run │
 ╰───────────────────────────────╯
-  … Loading export from /tmp/tmp.bTph20Pavq.json
+  … Loading export from /tmp/<tmpfile>.json
   … Mapping source records onto Memanto schema...
 
 ╭────────────────────── Dry run complete ──────────────────────╮
@@ -12,11 +12,11 @@
 │ Dry run — no writes performed.                               │
 │                                                              │
 │ Run dir:                                                     │
-│ /home/samuel/.memanto/migrate/langgraph/20260724_230100      │
+│ ~/.memanto/migrate/langgraph/20260724_230100                 │
 │ Mapped preview:                                              │
-│ /home/samuel/.memanto/migrate/langgraph/20260724_230100/mapp │
-│ ed_preview.json                                              │
+│ ~/.memanto/migrate/langgraph/20260724_230100/mapped_preview. │
+│ json                                                         │
 │ Savings report:                                              │
-│ /home/samuel/.memanto/migrate/langgraph/20260724_230100/migr │
-│ ate-report.md                                                │
+│ ~/.memanto/migrate/langgraph/20260724_230100/migrate-report. │
+│ md                                                           │
 ╰──────────────────────────────────────────────────────────────╯

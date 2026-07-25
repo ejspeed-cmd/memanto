@@ -18,6 +18,7 @@ Auth: ``Authorization: Api-Key <api_key>``.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,16 +60,25 @@ def _post_json(client: httpx.Client, path: str, body: dict[str, Any]) -> Any:
 def list_all_users(client: httpx.Client) -> list[dict[str, Any]]:
     users: list[dict[str, Any]] = []
     page = 1
+    MAX_PAGES = 1000
+    seen_counts: list[int] = []
     while True:
         data = _get_json(
             client,
             "/api/v2/users-ordered",
             params={"pageNumber": page, "pageSize": USER_PAGE_SIZE},
         )
+        total_count: int | None = data.get("total_count")
         batch = data.get("users") or []
         users.extend(batch)
         if len(batch) < USER_PAGE_SIZE:
             break
+        if total_count is not None and len(users) >= total_count:
+            break
+        if page >= MAX_PAGES:
+            raise RuntimeError(
+                f"User pagination cap ({MAX_PAGES} pages) reached. Export may be incomplete."
+            )
         page += 1
     return users
 
@@ -76,6 +86,9 @@ def list_all_users(client: httpx.Client) -> list[dict[str, Any]]:
 def list_user_edges(client: httpx.Client, user_id: str) -> list[dict[str, Any]]:
     edges: list[dict[str, Any]] = []
     cursor: str | None = None
+    seen_cursors: set[str] = set()
+    MAX_PAGES = 5000
+    page = 0
     while True:
         body: dict[str, Any] = {"limit": EDGE_PAGE_SIZE}
         if cursor:
@@ -86,9 +99,17 @@ def list_user_edges(client: httpx.Client, user_id: str) -> list[dict[str, Any]]:
         edges.extend(batch)
         if len(batch) < EDGE_PAGE_SIZE:
             break
-        cursor = batch[-1].get("uuid")
-        if not cursor:
+        new_cursor = batch[-1].get("uuid")
+        if not new_cursor or new_cursor in seen_cursors:
             break
+        seen_cursors.add(new_cursor)
+        cursor = new_cursor
+        page += 1
+        if page >= MAX_PAGES:
+            raise RuntimeError(
+                f"Edge pagination cap ({MAX_PAGES} pages) reached for user '{user_id}'. "
+                "Export may be incomplete."
+            )
     return edges
 
 
@@ -140,11 +161,14 @@ def run_zep_export(
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / "zep_export.json"
-    with out_path.open("w", encoding="utf-8") as f:
-        json.dump(export, f, indent=2, ensure_ascii=False, default=str)
+    tmp_path = out_path.with_suffix(".json.tmp")
+    fd = os.open(str(tmp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        out_path.chmod(0o600)
-    except OSError:
-        pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(export, f, indent=2, ensure_ascii=False, default=str)
+        tmp_path.replace(out_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
     return out_path, export

@@ -14,11 +14,10 @@ ip
 │ Dry run — no writes performed.                               │
 │                                                              │
 │ Run dir:                                                     │
-│ /home/samuel/.memanto/migrate/claude/20260724_230035         │
+│ ~/.memanto/migrate/claude/20260724_230035                    │
 │ Mapped preview:                                              │
-│ /home/samuel/.memanto/migrate/claude/20260724_230035/mapped_ │
-│ preview.json                                                 │
+│ ~/.memanto/migrate/claude/20260724_230035/mapped_preview.jso │
+│ n                                                            │
 │ Savings report:                                              │
-│ /home/samuel/.memanto/migrate/claude/20260724_230035/migrate │
-│ -report.md                                                   │
+│ ~/.memanto/migrate/claude/20260724_230035/migrate-report.md  │
 ╰──────────────────────────────────────────────────────────────╯

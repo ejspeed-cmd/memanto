@@ -91,6 +91,27 @@ def source_count(provider: str, export: dict[str, Any]) -> int:
         return len(export.get("passages", []) or [])
     if provider == "langgraph":
         return len(export.get("items", []) or [])
+    if provider == "chatgpt":
+        return sum(
+            1
+            for conv in (export.get("memories", []) or [])
+            if isinstance(conv, dict)
+            for node in (conv.get("mapping") or {}).values()
+            if isinstance(node, dict)
+            and isinstance(node.get("message"), dict)
+            and (node["message"].get("author") or {}).get("role") == "user"
+        )
+    if provider in ("claude", "gemini"):
+        role_key = "sender" if provider == "claude" else "role"
+        role_val = "human" if provider == "claude" else "user"
+        msg_key = "chat_messages" if provider == "claude" else "messages"
+        return sum(
+            1
+            for conv in (export.get("memories", []) or [])
+            if isinstance(conv, dict)
+            for msg in (conv.get(msg_key) or [])
+            if isinstance(msg, dict) and msg.get(role_key) == role_val
+        )
     memories = export.get("memories", []) or []
     if provider == "supermemory" and not memories:
         return sum(

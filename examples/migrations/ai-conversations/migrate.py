@@ -11,7 +11,7 @@ No live Memanto server or API key is needed when only --dry-run is used.
 
 Usage:
     python migrate.py
-    python migrate.py --agent my-agent-id     # live migration, no dry-run
+    python migrate.py --live --agent my-agent-id     # live migration
 """
 
 from __future__ import annotations

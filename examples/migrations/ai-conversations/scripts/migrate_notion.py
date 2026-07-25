@@ -25,7 +25,7 @@ def main() -> int:
     parser.add_argument("--agent", default=None)
     args = parser.parse_args()
 
-    if not Path(ZIP_PATH).exists():
+    if not Path(ZIP_PATH).is_file():
         print(f"ZIP not found: {ZIP_PATH}", file=sys.stderr)
         print("Set ZIP_PATH at the top of this script to your Notion export zip.", file=sys.stderr)
         print("Export from: Notion settings → Settings & Members → Settings → Export content", file=sys.stderr)

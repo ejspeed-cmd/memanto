@@ -86,53 +86,54 @@ def run(agent_id: str, golden_path: Path) -> int:
 
     client.activate_agent(agent_id, duration_hours=1)
 
-    golden = _load_golden(golden_path)
-    judge = _build_judge()
-
     results = []
     passed = 0
 
-    for item in golden:
-        qid = item["id"]
-        question = item["question"]
-        golden_answer = item["answer"]
-        source = item["source"]
+    try:
+        golden = _load_golden(golden_path)
+        judge = _build_judge()
 
-        print(f"  {qid}: {question[:60]}...")
+        for item in golden:
+            qid = item["id"]
+            question = item["question"]
+            golden_answer = item["answer"]
+            source = item["source"]
 
-        try:
-            resp = client.answer(agent_id, question)
-            recalled = resp.get("answer", "") or ""
-        except Exception as exc:
-            print(f"    answer() failed: {exc}", file=sys.stderr)
-            recalled = ""
+            print(f"  {qid}: {question[:60]}...")
 
-        score = judge.score(
-            system_name="memanto",
-            query_id=qid,
-            query=question,
-            golden_answer=golden_answer,
-            stale_signals=[],
-            current_signals=[golden_answer],
-            recalled_answer=recalled,
-        )
+            try:
+                resp = client.answer(agent_id, question)
+                recalled = resp.get("answer", "") or ""
+            except Exception as exc:
+                print(f"    answer() failed: {exc}", file=sys.stderr)
+                recalled = ""
 
-        ok = score.total >= MIN_SCORE_TO_PASS
-        if ok:
-            passed += 1
+            score = judge.score(
+                system_name="memanto",
+                query_id=qid,
+                query=question,
+                golden_answer=golden_answer,
+                stale_signals=[],
+                current_signals=[golden_answer],
+                recalled_answer=recalled,
+            )
 
-        results.append({
-            "id": qid,
-            "source": source,
-            "total": score.total,
-            "accuracy": score.accuracy,
-            "staleness_avoidance": score.staleness_avoidance,
-            "precision": score.precision,
-            "passed": ok,
-            "reasoning": score.reasoning,
-        })
+            ok = score.total >= MIN_SCORE_TO_PASS
+            if ok:
+                passed += 1
 
-    client.deactivate_agent(agent_id)
+            results.append({
+                "id": qid,
+                "source": source,
+                "total": score.total,
+                "accuracy": score.accuracy,
+                "staleness_avoidance": score.staleness_avoidance,
+                "precision": score.precision,
+                "passed": ok,
+                "reasoning": score.reasoning,
+            })
+    finally:
+        client.deactivate_agent(agent_id)
 
     _print_table(results)
 

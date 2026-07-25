@@ -30,7 +30,7 @@ def main() -> int:
         print("HINDSIGHT_API_KEY is not set. Export it or pass --api-key.", file=sys.stderr)
         return 1
 
-    cmd = ["memanto", "migrate", "hindsight", "--api-key", api_key]
+    cmd = ["memanto", "migrate", "hindsight"]
 
     base_url = args.base_url or os.environ.get("HINDSIGHT_BASE_URL", "")
     if base_url:
@@ -45,7 +45,8 @@ def main() -> int:
     if args.agent:
         cmd += ["--agent", args.agent]
 
-    return subprocess.run(cmd).returncode
+    env = {**os.environ, "HINDSIGHT_API_KEY": api_key}
+    return subprocess.run(cmd, env=env).returncode
 
 
 if __name__ == "__main__":

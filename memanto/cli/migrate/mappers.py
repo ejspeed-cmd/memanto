@@ -604,7 +604,11 @@ def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
     migrated_at = _now_utc()
 
     for conv in export.get("memories", []) or []:
+        if not isinstance(conv, dict):
+            continue
         mapping = conv.get("mapping") or {}
+        if not isinstance(mapping, dict):
+            continue
         current_node = conv.get("current_node")
         if not mapping or not current_node:
             continue
@@ -616,10 +620,10 @@ def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
         while node_id and node_id not in seen:
             seen.add(node_id)
             node = mapping.get(node_id)
-            if not node:
+            if not isinstance(node, dict):
                 break
             msg = node.get("message")
-            if msg:
+            if isinstance(msg, dict):
                 author = msg.get("author") or {}
                 content_obj = msg.get("content") or {}
                 if (

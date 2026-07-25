@@ -14,11 +14,10 @@ ip
 │ Dry run — no writes performed.                               │
 │                                                              │
 │ Run dir:                                                     │
-│ /home/samuel/.memanto/migrate/gemini/20260724_230037         │
+│ ~/.memanto/migrate/gemini/20260724_230037                    │
 │ Mapped preview:                                              │
-│ /home/samuel/.memanto/migrate/gemini/20260724_230037/mapped_ │
-│ preview.json                                                 │
+│ ~/.memanto/migrate/gemini/20260724_230037/mapped_preview.jso │
+│ n                                                            │
 │ Savings report:                                              │
-│ /home/samuel/.memanto/migrate/gemini/20260724_230037/migrate │
-│ -report.md                                                   │
+│ ~/.memanto/migrate/gemini/20260724_230037/migrate-report.md  │
 ╰──────────────────────────────────────────────────────────────╯

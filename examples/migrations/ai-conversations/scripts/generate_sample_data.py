@@ -233,7 +233,6 @@ def deidentify_chatgpt(src: Path) -> bytes:
 
 
 def verify_chatgpt(zip_bytes: bytes) -> int:
-    sys.path.insert(0, str(REPO_ROOT))
     from memanto.cli.migrate.mappers import map_chatgpt
     return _verify(zip_bytes, "conversations.json", lambda raw: raw, map_chatgpt)
 
@@ -297,7 +296,7 @@ def verify_claude(zip_bytes: bytes) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _build_gemini_entry(ci: int, src_entry: dict | None) -> dict:
+def _build_gemini_entry(ci: int) -> dict:
     user_q, _ = _pick_exchange(ci + 2)
     entry: dict = {
         "header": "Gemini Apps",
@@ -307,16 +306,12 @@ def _build_gemini_entry(ci: int, src_entry: dict | None) -> dict:
         "products": ["Gemini Apps"],
         "activityControls": ["Gemini Apps Activity"],
     }
-    if src_entry:
-        for k in ("safeHtmlItem", "attachedFiles", "imageFile"):
-            if k in src_entry:
-                entry[k] = src_entry[k]
     return entry
 
 
 def deidentify_gemini(src: Path) -> bytes:
     real = _read_zip_json(src, _GEMINI_INNER)
-    entries = [_build_gemini_entry(i, real[i] if i < len(real) else None) for i in range(min(5, len(EXCHANGES)))]
+    entries = [_build_gemini_entry(i) for i in range(min(5, len(EXCHANGES)))]
     return _write_zip({_GEMINI_INNER: entries})
 
 
@@ -351,6 +346,7 @@ def main() -> None:
     args = parser.parse_args()
 
     SAMPLE_DIR.mkdir(parents=True, exist_ok=True)
+    sys.path.insert(0, str(REPO_ROOT))
 
     src_map = {"chatgpt": args.chatgpt, "claude": args.claude, "gemini": args.gemini}
     all_ok = True

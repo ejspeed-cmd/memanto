@@ -64,8 +64,8 @@
   },
   {
     "id": "qa_010",
-    "question": "What container command did Alex ask about to run Qdrant locally?",
-    "answer": "Alex asked how to set up Qdrant locally with Docker and connect from a Rust client.",
+    "question": "How did Alex ask about setting up Qdrant locally with Docker and connecting from a Rust client?",
+    "answer": "Alex asked how to set up Qdrant locally with Docker and connect it from a Rust client.",
     "source": "gemini",
     "rationale": "Gemini activity entry 'How do I set up Qdrant locally with Docker and connect it from a Rust client?' — the full prompt is preserved in the title."
   }

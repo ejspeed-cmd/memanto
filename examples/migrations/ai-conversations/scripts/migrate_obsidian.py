@@ -30,7 +30,7 @@ def main() -> int:
         print("Set VAULT_PATH at the top of this script to your Obsidian vault directory.", file=sys.stderr)
         return 1
 
-    cmd = ["memanto", "migrate", "obsidian", "--file", VAULT_PATH]
+    cmd = ["memanto", "migrate", "obsidian", VAULT_PATH]
     if args.dry_run:
         cmd.append("--dry-run")
     if args.agent:

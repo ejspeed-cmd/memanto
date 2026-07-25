@@ -2,7 +2,7 @@
 # Full pipeline: migrate sample data → export OKF bundle
 #
 # Requires:
-#   MOORCHEH_API_KEY  — set in .env or exported in shell
+#   MOORCHEH_API_KEY  — set in .env (auto-sourced) or exported in shell
 #   AGENT_ID          — set below or pass as first argument
 #
 # Usage:
@@ -14,6 +14,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHOWCASE_DIR="$(dirname "$SCRIPT_DIR")"
 SAMPLE_DATA="$SHOWCASE_DIR/sample_data"
 OKF_DIR="$SHOWCASE_DIR/okf_bundle"
+
+# Auto-source .env from the showcase dir or repo root if present
+for _env_candidate in "$SHOWCASE_DIR/.env" "$SHOWCASE_DIR/../../.env" "$SHOWCASE_DIR/../../../.env"; do
+  if [ -f "$_env_candidate" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$_env_candidate"
+    set +a
+    break
+  fi
+done
 
 # ── configure ────────────────────────────────────────────────────────────────
 AGENT_ID="${1:-${AGENT_ID:-ai-conversations-showcase}}"
@@ -34,7 +45,16 @@ echo ""
 
 # Step 1 — create and activate agent
 echo ">> Step 1: create and activate agent '$AGENT_ID'"
-memanto agent create "$AGENT_ID" --pattern tool 2>/dev/null || echo "   (agent already exists)"
+create_out=$(memanto agent create "$AGENT_ID" --pattern tool 2>&1) && true
+create_exit=$?
+if [ $create_exit -ne 0 ]; then
+  if echo "$create_out" | grep -qi "already exists"; then
+    echo "   (agent already exists)"
+  else
+    echo "ERROR: agent creation failed: $create_out" >&2
+    exit 1
+  fi
+fi
 memanto agent activate "$AGENT_ID"
 echo ""
 

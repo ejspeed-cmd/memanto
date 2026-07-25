@@ -27,26 +27,25 @@ def main() -> int:
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         tmp_path = f.name
 
-    dump_cmd = [sys.executable, str(_SCRIPTS / "dump_langgraph.py"), "--output", tmp_path]
-    result = subprocess.run(dump_cmd)
-    if result.returncode != 0:
-        print("LangGraph dump failed.", file=sys.stderr)
-        return 1
-
-    migrate_cmd = ["memanto", "migrate", "langgraph", "--file", tmp_path]
-    if args.dry_run:
-        migrate_cmd.append("--dry-run")
-    if args.agent:
-        migrate_cmd += ["--agent", args.agent]
-
-    rc = subprocess.run(migrate_cmd).returncode
-
     try:
-        Path(tmp_path).unlink()
-    except OSError:
-        pass
+        dump_cmd = [sys.executable, str(_SCRIPTS / "dump_langgraph.py"), "--output", tmp_path]
+        result = subprocess.run(dump_cmd)
+        if result.returncode != 0:
+            print("LangGraph dump failed.", file=sys.stderr)
+            return 1
 
-    return rc
+        migrate_cmd = ["memanto", "migrate", "langgraph", "--file", tmp_path]
+        if args.dry_run:
+            migrate_cmd.append("--dry-run")
+        if args.agent:
+            migrate_cmd += ["--agent", args.agent]
+
+        return subprocess.run(migrate_cmd).returncode
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

@@ -88,14 +88,14 @@ from memanto.cli.migrate.runner import (
 )
 
 def _safe_extract(zf: Any, dest: str) -> None:
-    """Extract a ZipFile while rejecting members that escape the destination."""
-    import os
+    """Validate and extract a ZipFile, rejecting members that escape the destination."""
     import zipfile
     dest_path = os.path.realpath(dest)
     for member in zf.namelist():
         member_path = os.path.realpath(os.path.join(dest, member))
         if not member_path.startswith(dest_path + os.sep) and member_path != dest_path:
             raise zipfile.BadZipFile(f"Unsafe path in archive: {member}")
+    zf.extractall(dest)
 
 # Per-provider plumbing in one place so each subcommand stays tiny.
 _PROVIDER_BUNDLES: dict[str, dict[str, Any]] = {
@@ -817,7 +817,6 @@ def migrate_conversations(
             try:
                 with zipfile.ZipFile(path) as zf:
                     _safe_extract(zf, tmp)
-                    zf.extractall(tmp)
             except zipfile.BadZipFile:
                 _error(f"Cannot read ZIP file: {path}")
 
@@ -947,7 +946,7 @@ def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
             self._buf: list[str] = []
 
         def handle_starttag(self, tag: str, attrs: list) -> None:
-            cls = dict(attrs).get("class", "")
+            cls = dict(attrs).get("class", "") or ""
             if tag == "div" and "outer-cell" in cls:
                 if self._in_outer:
                     self._flush_entry()
@@ -1233,25 +1232,28 @@ def migrate_notion(
 
     import yaml
 
-    run_dir, progress = _start_run("notion", "Notion", dry_run)
-    target_agent = None if dry_run else _resolve_target_agent(agent)
-
     if not file.exists() or not file.is_file():
         _error(
             f"Notion export not found: {file}",
             hint="Provide a path to your Notion export ZIP file.",
         )
 
+    run_dir, progress = _start_run("notion", "Notion", dry_run)
+    target_agent = None if dry_run else _resolve_target_agent(agent)
+
     progress(f"Extracting {file}")
     try:
         with zipfile.ZipFile(file) as zf:
             with tempfile.TemporaryDirectory() as tmp:
                 _safe_extract(zf, tmp)
-                zf.extractall(tmp)
                 tmp_path = Path(tmp)
                 memories: list[dict] = []
                 for md_file in tmp_path.rglob("*.md"):
-                    raw = md_file.read_text(encoding="utf-8", errors="replace")
+                    try:
+                        raw = md_file.read_text(encoding="utf-8", errors="replace")
+                    except OSError as exc:
+                        progress(f"Skipping unreadable file {md_file.name}: {exc}")
+                        continue
                     frontmatter: dict = {}
                     body = raw
                     if raw.startswith("---\n"):

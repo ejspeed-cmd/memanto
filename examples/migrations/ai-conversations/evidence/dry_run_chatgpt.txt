@@ -14,11 +14,10 @@ zip
 │ Dry run — no writes performed.                               │
 │                                                              │
 │ Run dir:                                                     │
-│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034        │
+│ ~/.memanto/migrate/chatgpt/20260724_230034                   │
 │ Mapped preview:                                              │
-│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034/mapped │
-│ _preview.json                                                │
+│ ~/.memanto/migrate/chatgpt/20260724_230034/mapped_preview.js │
+│ on                                                           │
 │ Savings report:                                              │
-│ /home/samuel/.memanto/migrate/chatgpt/20260724_230034/migrat │
-│ e-report.md                                                  │
+│ ~/.memanto/migrate/chatgpt/20260724_230034/migrate-report.md │
 ╰──────────────────────────────────────────────────────────────╯

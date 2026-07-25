@@ -3,7 +3,7 @@
 Migrate Zep Cloud graph edge facts into Memanto.
 
 Requires:
-    ZEP_API_KEY env var (or will be prompted)
+    ZEP_API_KEY env var (exits when neither --api-key nor ZEP_API_KEY is provided)
 
 Run:
     python scripts/migrate_zep.py [--dry-run] [--agent <id>]
@@ -27,13 +27,14 @@ def main() -> int:
         print("ZEP_API_KEY is not set. Export it or pass --api-key.", file=sys.stderr)
         return 1
 
-    cmd = ["memanto", "migrate", "zep", "--api-key", api_key]
+    cmd = ["memanto", "migrate", "zep"]
     if args.dry_run:
         cmd.append("--dry-run")
     if args.agent:
         cmd += ["--agent", args.agent]
 
-    return subprocess.run(cmd).returncode
+    env = {**os.environ, "ZEP_API_KEY": api_key}
+    return subprocess.run(cmd, env=env).returncode
 
 
 if __name__ == "__main__":

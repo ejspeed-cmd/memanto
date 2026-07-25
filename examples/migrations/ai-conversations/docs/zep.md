@@ -1,7 +1,5 @@
 # Zep export guide
 
-<!-- VIDEO: https://youtu.be/TODO-zep-export -->
-
 ## How to get your data
 
 Zep data is pulled live via the API — no ZIP download needed.
@@ -15,11 +13,10 @@ export ZEP_API_KEY=your_key_here
 memanto migrate zep --agent <id>
 ```
 
-Or pass the key directly:
-
-```bash
-memanto migrate zep --api-key your_key_here --agent <id>
-```
+> **Security warning:** Avoid passing `--api-key` as a command-line argument.
+> API keys passed on the command line are visible in shell history (`~/.bash_history`,
+> `~/.zsh_history`) and in the system process list (`ps aux`). Use the environment
+> variable above or a `.env` file instead.
 
 Dry-run (exports data but doesn't write to Memanto):
 
