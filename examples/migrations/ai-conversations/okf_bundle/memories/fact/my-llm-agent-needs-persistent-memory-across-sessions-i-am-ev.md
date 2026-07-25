@@ -6,7 +6,7 @@ description: My LLM agent needs persistent memory across sessions. I am evaluati
   mem0, Mema
 timestamp: '2025-08-10T11:52:09.774775+00:00'
 x_memanto:
-  id: 0cffd4b5-21b4-4547-8048-4e61980d5663
+  id: 34a6f891-9282-48c5-8204-2fd382e9b963
   confidence: 0.8
   provenance: imported
   source: gemini

@@ -69,3 +69,14 @@
 
 ---
 
+### [2025-09-02 00:59:51] [RELATIONSHIP] How do I set up Qdrant locally with Docker and connect it from a Rust client?
+- **Memory ID**: `7ea00ed9-8477-4fc2-a5a9-ceff3f50f1ee`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `gemini`
+- **Provenance**: `imported`
+- **Content**:
+> How do I set up Qdrant locally with Docker and connect it from a Rust client?
+
+---
+

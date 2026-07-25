@@ -97,6 +97,32 @@ def _safe_extract(zf: Any, dest: str) -> None:
             raise zipfile.BadZipFile(f"Unsafe path in archive: {member}")
     zf.extractall(dest)
 
+
+def _parse_markdown_file(md_file: Path, raw: str) -> dict | None:
+    """Parse a Markdown file with optional YAML frontmatter into a memory dict."""
+    import yaml
+    frontmatter: dict = {}
+    body = raw
+    if raw.startswith("---\n"):
+        end = raw.find("\n---\n", 4)
+        if end != -1:
+            try:
+                parsed = yaml.safe_load(raw[4:end])
+                frontmatter = parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                frontmatter = {}
+            body = raw[end + 5:]
+    body = body.strip()
+    if not body and not frontmatter.get("title"):
+        return None
+    return {
+        "title": frontmatter.get("title", ""),
+        "body": body,
+        "tags": frontmatter.get("tags") or [],
+        "created_at": frontmatter.get("created_at"),
+        "filename_stem": md_file.stem,
+    }
+
 # Per-provider plumbing in one place so each subcommand stays tiny.
 _PROVIDER_BUNDLES: dict[str, dict[str, Any]] = {
     "mem0": {
@@ -1230,8 +1256,6 @@ def migrate_notion(
     import tempfile
     import zipfile
 
-    import yaml
-
     if not file.exists() or not file.is_file():
         _error(
             f"Notion export not found: {file}",
@@ -1254,29 +1278,9 @@ def migrate_notion(
                     except OSError as exc:
                         progress(f"Skipping unreadable file {md_file.name}: {exc}")
                         continue
-                    frontmatter: dict = {}
-                    body = raw
-                    if raw.startswith("---\n"):
-                        end = raw.find("\n---\n", 4)
-                        if end != -1:
-                            try:
-                                parsed = yaml.safe_load(raw[4:end])
-                                frontmatter = parsed if isinstance(parsed, dict) else {}
-                            except Exception:
-                                frontmatter = {}
-                            body = raw[end + 5:]
-                    body = body.strip()
-                    if not body and not frontmatter.get("title"):
-                        continue
-                    memories.append(
-                        {
-                            "title": frontmatter.get("title", ""),
-                            "body": body,
-                            "tags": frontmatter.get("tags") or [],
-                            "created_at": frontmatter.get("created_at"),
-                            "filename_stem": md_file.stem,
-                        }
-                    )
+                    entry = _parse_markdown_file(md_file, raw)
+                    if entry is not None:
+                        memories.append(entry)
     except (zipfile.BadZipFile, OSError) as exc:
         _error(f"Cannot read ZIP file: {exc}")
 
@@ -1310,8 +1314,6 @@ def migrate_obsidian(
         memanto migrate obsidian /path/to/vault --dry-run
         memanto migrate obsidian /path/to/vault --agent my-agent
     """
-    import yaml
-
     if not file.exists() or not file.is_dir():
         _error(
             f"Obsidian vault not found or is not a directory: {file}",
@@ -1328,29 +1330,9 @@ def migrate_obsidian(
             raw = md_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        frontmatter: dict = {}
-        body = raw
-        if raw.startswith("---\n"):
-            end = raw.find("\n---\n", 4)
-            if end != -1:
-                try:
-                    parsed = yaml.safe_load(raw[4:end])
-                    frontmatter = parsed if isinstance(parsed, dict) else {}
-                except Exception:
-                    frontmatter = {}
-                body = raw[end + 5:]
-        body = body.strip()
-        if not body and not frontmatter.get("title"):
-            continue
-        memories.append(
-            {
-                "title": frontmatter.get("title", ""),
-                "body": body,
-                "tags": frontmatter.get("tags") or [],
-                "created_at": frontmatter.get("created_at"),
-                "filename_stem": md_file.stem,
-            }
-        )
+        entry = _parse_markdown_file(md_file, raw)
+        if entry is not None:
+            memories.append(entry)
 
     export: dict = {"memories": memories}
 

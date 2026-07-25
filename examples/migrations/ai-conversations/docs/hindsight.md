@@ -1,6 +1,5 @@
 # Hindsight export guide
 
-<!-- VIDEO: https://youtu.be/TODO-hindsight-export -->
 
 ## How to get your data
 

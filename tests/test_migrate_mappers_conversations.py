@@ -157,7 +157,7 @@ class TestMapChatgpt:
         }
         export = {"memories": [{"id": "c1", "title": "cycle", "mapping": mapping, "current_node": "n1"}]}
         rows = map_chatgpt(export)
-        assert len(rows) <= 2
+        assert len(rows) == 2
 
     def test_empty_memories(self):
         assert map_chatgpt({"memories": []}) == []
@@ -177,6 +177,14 @@ class TestMapChatgpt:
         export = _chatgpt_export("hello")
         rows = map_chatgpt(export)
         assert rows[0]["source_ref"] == "node-0"
+
+    def test_skips_malformed_conv(self):
+        good_export = _chatgpt_export("valid message")
+        good_conv = good_export["memories"][0]
+        export = {"memories": ["not a dict", None, 42, good_conv]}
+        rows = map_chatgpt(export)
+        assert len(rows) == 1
+        assert "valid message" in rows[0]["content"]
 
 
 class TestMapClaude:
@@ -269,6 +277,12 @@ class TestMapClaude:
         export = _claude_export("first", "second", "third")
         rows = map_claude(export)
         assert len(rows) == 3
+
+    def test_skips_malformed_conv(self):
+        export = {"memories": ["not a dict", None, {"uuid": "c1", "name": "ok", "chat_messages": [{"uuid": "m1", "sender": "human", "text": "valid"}]}]}
+        rows = map_claude(export)
+        assert len(rows) == 1
+        assert "valid" in rows[0]["content"]
 
 
 class TestMapGemini:

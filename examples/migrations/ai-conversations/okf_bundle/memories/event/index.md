@@ -1,7 +1,7 @@
 ---
 type: index
 title: event
-timestamp: 2026-07-25T15:14:35
+timestamp: 2026-07-25T17:23:30
 ---
 
 # event (4)
@@ -9,4 +9,4 @@ timestamp: 2026-07-25T15:14:35
 - [Contributing to ripgrep](contributing-to-ripgrep.md)
 - [Open-sourcing an LLM memory benchmarking tool](open-sourcing-an-llm-memory-benchmarking-tool.md)
 - [Comparing LLM embedding models](comparing-llm-embedding-models.md)
-- [Setting up a Qdrant vector store](setting-up-a-qdrant-vector-store.md)
+- [Comparing agent memory systems: mem0, Memanto, and plain vector DB](comparing-agent-memory-systems-mem0-memanto-and-plain-vector.md)

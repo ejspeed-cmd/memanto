@@ -61,7 +61,6 @@ def list_all_users(client: httpx.Client) -> list[dict[str, Any]]:
     users: list[dict[str, Any]] = []
     page = 1
     MAX_PAGES = 1000
-    seen_counts: list[int] = []
     while True:
         data = _get_json(
             client,
@@ -162,6 +161,7 @@ def run_zep_export(
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / "zep_export.json"
     tmp_path = out_path.with_suffix(".json.tmp")
+    tmp_path.unlink(missing_ok=True)
     fd = os.open(str(tmp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

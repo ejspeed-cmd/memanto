@@ -69,3 +69,14 @@
 
 ---
 
+### [2025-07-30 16:41:12] [FACT] Comparing text-embedding-3-small vs bge-m3 for a semantic search index over Rust
+- **Memory ID**: `64f54255-3ec7-40ec-8e09-33eb21f40c0a`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `gemini`
+- **Provenance**: `imported`
+- **Content**:
+> Comparing text-embedding-3-small vs bge-m3 for a semantic search index over Rust
+
+---
+

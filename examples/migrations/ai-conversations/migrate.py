@@ -86,11 +86,13 @@ def _run_conversation(source: str, agent: str | None, dry_run: bool) -> dict | N
     summary["exit_code"] = result.returncode
     summary["error"] = None
 
-    if result.returncode != 0 and not dry_run:
+    if result.returncode != 0:
         for line in combined.splitlines():
             if "error" in line.lower() or "failed" in line.lower():
                 summary["error"] = line.strip()
                 break
+    elif summary["source_records"] == 0 and summary["mapped"] == 0:
+        print(f"  [warn] {source}: command succeeded but produced no summary — output format may have changed", file=sys.stderr)
 
     return summary
 
@@ -114,6 +116,11 @@ def _run_langgraph(agent: str | None, dry_run: bool) -> dict | None:
     summary = _parse_summary(combined)
     summary["exit_code"] = result.returncode
     summary["error"] = None
+    if result.returncode != 0:
+        for line in combined.splitlines():
+            if "error" in line.lower() or "failed" in line.lower():
+                summary["error"] = line.strip()
+                break
     return summary
 
 
@@ -163,7 +170,9 @@ def main() -> int:
         rows.append((source, s["source_records"], s["mapped"], s["skipped"], types_str, status))
 
     lg = _run_langgraph(agent, dry_run)
-    if lg is not None:
+    if lg is None:
+        rows.append(("langgraph", "—", "—", "—", "seed file missing", "SKIP"))
+    else:
         print("  running langgraph...")
         types_str = ", ".join(f"{k}:{v}" for k, v in lg["types"].items()) or "auto"
         status = "OK" if lg["exit_code"] == 0 else "FAIL"

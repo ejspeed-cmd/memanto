@@ -38,7 +38,22 @@ def _get_store():
 async def _dump(store, postgres: bool) -> list[dict]:
     items = []
     seen: set[tuple] = set()
-    ns_list = await store.alist_namespaces()
+    ns_list: list = []
+    offset = 0
+    limit = 100
+    while True:
+        try:
+            batch = await store.alist_namespaces(limit=limit, offset=offset)
+        except TypeError:
+            batch = await store.alist_namespaces()
+            ns_list.extend(batch)
+            break
+        if not batch:
+            break
+        ns_list.extend(batch)
+        if len(batch) < limit:
+            break
+        offset += limit
     for ns in ns_list:
         offset = 0
         limit = 100

@@ -53,7 +53,7 @@ TITLES = [
     "Implementing async Rust with Tokio",
     "Debugging lifetime errors in Rust",
     "Comparing LLM embedding models",
-    "Setting up a Qdrant vector store",
+    "Comparing agent memory systems: mem0, Memanto, and plain vector DB",
     "Running Qdrant with Docker and Rust client",
     "Open-sourcing an LLM memory benchmarking tool",
     "Optimizing Rust binary size",
@@ -179,20 +179,18 @@ def _verify(zip_bytes: bytes, inner_path: str, to_memories: Callable, mapper: Ca
 # ChatGPT
 # ---------------------------------------------------------------------------
 
-def _build_chatgpt_conv(ci: int, conv: dict) -> dict:
+def _build_chatgpt_conv(ci: int) -> dict:
     user_q, asst_a = _pick_exchange(ci)
     root_id, user_id, asst_id = _fake_uuid(), _fake_uuid(), _fake_uuid()
-
-    new_conv = {k: v for k, v in conv.items() if k != "mapping"}
     conv_id = _fake_uuid()
-    new_conv.update(
-        id=conv_id,
-        conversation_id=conv_id,
-        title=TITLES[ci % len(TITLES)],
-        create_time=_fake_ts(),
-        update_time=_fake_ts(),
-        current_node=asst_id,
-        mapping={
+    return {
+        "id": conv_id,
+        "conversation_id": conv_id,
+        "title": TITLES[ci % len(TITLES)],
+        "create_time": _fake_ts(),
+        "update_time": _fake_ts(),
+        "current_node": asst_id,
+        "mapping": {
             root_id: {"id": root_id, "message": None, "parent": None},
             user_id: {
                 "id": user_id,
@@ -217,13 +215,12 @@ def _build_chatgpt_conv(ci: int, conv: dict) -> dict:
                 "parent": user_id,
             },
         },
-    )
-    return new_conv
+    }
 
 
 def deidentify_chatgpt(src: Path) -> bytes:
     real = _read_zip_json(src, "conversations.json")
-    convs = [_build_chatgpt_conv(i, c) for i, c in enumerate(real[:5])]
+    convs = [_build_chatgpt_conv(i) for i in range(min(5, len(real)))]
     return _write_zip({"conversations.json": convs})
 
 
@@ -236,18 +233,16 @@ def verify_chatgpt(zip_bytes: bytes) -> int:
 # Claude
 # ---------------------------------------------------------------------------
 
-def _build_claude_conv(ci: int, conv: dict) -> dict:
+def _build_claude_conv(ci: int) -> dict:
     user_q, asst_a = _pick_exchange(ci + 5)
     base_ts = _fake_ts()
     human_uuid, asst_uuid = _fake_uuid(), _fake_uuid()
-
-    new_conv = {k: v for k, v in conv.items() if k not in ("chat_messages", "uuid", "name")}
-    new_conv.update(
-        uuid=_fake_uuid(),
-        name=TITLES[(ci + 5) % len(TITLES)],
-        created_at=_fake_iso(base_ts),
-        updated_at=_fake_iso(base_ts + 3600),
-        chat_messages=[
+    return {
+        "uuid": _fake_uuid(),
+        "name": TITLES[(ci + 5) % len(TITLES)],
+        "created_at": _fake_iso(base_ts),
+        "updated_at": _fake_iso(base_ts + 3600),
+        "chat_messages": [
             {
                 "uuid": human_uuid,
                 "text": user_q,
@@ -271,13 +266,12 @@ def _build_claude_conv(ci: int, conv: dict) -> dict:
                 "parent_message_uuid": human_uuid,
             },
         ],
-    )
-    return new_conv
+    }
 
 
 def deidentify_claude(src: Path) -> bytes:
     real = _read_zip_json(src, "conversations.json")
-    convs = [_build_claude_conv(i, c) for i, c in enumerate(real[:5])]
+    convs = [_build_claude_conv(i) for i in range(min(5, len(real)))]
     return _write_zip({"conversations.json": convs})
 
 

@@ -6,7 +6,7 @@ description: I want to open-source my LLM memory benchmarking tool. What license
 timestamp: '2025-10-09T13:48:53.008813+00:00'
 resource: 3838b326-8e94-4239-b02b-61c4a3d70628
 x_memanto:
-  id: 46160624-62a7-474b-9289-fcf43a316480
+  id: a0d7a518-98cd-44f0-9a7b-fc7b127f0cae
   confidence: 0.8
   provenance: imported
   source: claude

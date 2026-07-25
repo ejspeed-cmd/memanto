@@ -1,6 +1,5 @@
 # LangGraph export guide
 
-<!-- VIDEO: https://youtu.be/TODO-langgraph-export -->
 
 ## How to get your data
 

@@ -105,3 +105,20 @@
 
 ---
 
+### [2025-08-15 01:21:15] [INSTRUCTION] Tracking memory provenance for AI agents
+- **Memory ID**: `b9862297-fcf2-439d-b60e-5c6ccad8920c`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `claude`
+- **Provenance**: `imported`
+- **Content**:
+> I need a simple way to track which memories my AI agent added vs which it inherited from a migration. Is there a provenance field I should use?
+> 
+> ---
+> [Supporting data]
+> - Conversation: Tracking memory provenance for AI agents
+> - Conversation id: bb5e4bcf-15ed-6269-1429-6c07f26b4776
+> - Message id: 3d4cbf37-4eb9-3eff-ce88-cb2dd4e80839
+
+---
+

@@ -92,15 +92,36 @@ def source_count(provider: str, export: dict[str, Any]) -> int:
     if provider == "langgraph":
         return len(export.get("items", []) or [])
     if provider == "chatgpt":
-        return sum(
-            1
-            for conv in (export.get("memories", []) or [])
-            if isinstance(conv, dict)
-            for node in (conv.get("mapping") or {}).values()
-            if isinstance(node, dict)
-            and isinstance(node.get("message"), dict)
-            and (node["message"].get("author") or {}).get("role") == "user"
-        )
+        count = 0
+        for conv in (export.get("memories", []) or []):
+            if not isinstance(conv, dict):
+                continue
+            mapping = conv.get("mapping") or {}
+            if not isinstance(mapping, dict):
+                continue
+            current_node = conv.get("current_node")
+            if not mapping or not current_node:
+                continue
+            seen: set[str] = set()
+            node_id = current_node
+            while node_id and node_id not in seen:
+                seen.add(node_id)
+                node = mapping.get(node_id)
+                if not isinstance(node, dict):
+                    break
+                msg = node.get("message")
+                if isinstance(msg, dict):
+                    author = msg.get("author") or {}
+                    content_obj = msg.get("content") or {}
+                    if (
+                        author.get("role") == "user"
+                        and content_obj.get("content_type", "text") != "user_editable_context"
+                    ):
+                        parts = content_obj.get("parts") or []
+                        if any(isinstance(p, str) and p.strip() for p in parts):
+                            count += 1
+                node_id = node.get("parent")
+        return count
     if provider in ("claude", "gemini"):
         role_key = "sender" if provider == "claude" else "role"
         role_val = "human" if provider == "claude" else "user"

@@ -1,6 +1,6 @@
 # ChatGPT export guide
 
-<!-- VIDEO: https://youtu.be/TODO-chatgpt-export -->
+<!-- VIDEO -->
 
 ## How to get your data
 

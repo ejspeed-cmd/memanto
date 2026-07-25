@@ -1,13 +1,13 @@
 ---
 type: event
-title: Setting up a Qdrant vector store
+title: 'Comparing agent memory systems: mem0, Memanto, and plain vector DB'
 description: My LLM agent needs persistent memory across sessions. I am evaluating
   mem0, Memanto and a plain vector DB. What are the tradeoffs from an architecture
   standpoint?
 timestamp: '2025-06-21T16:33:11.410060+00:00'
 resource: 3139d32c-93cd-59bf-5c94-1cf0dc98d2c1
 x_memanto:
-  id: 7cad4c68-5cdb-4600-8106-4119a5cb80d9
+  id: eedbfc64-3013-4418-b0ab-e1059b82b3a2
   confidence: 0.8
   provenance: imported
   source: chatgpt
@@ -19,6 +19,6 @@ My LLM agent needs persistent memory across sessions. I am evaluating mem0, Mema
 
 ---
 [Supporting data]
-- Conversation: Setting up a Qdrant vector store
+- Conversation: Comparing agent memory systems: mem0, Memanto, and plain vector DB
 - Conversation id: fc377a4c-4a15-544d-c5e7-ce8a3a578a8e
 - Node id: 3139d32c-93cd-59bf-5c94-1cf0dc98d2c1

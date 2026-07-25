@@ -1,7 +1,5 @@
 # Notion export guide
 
-<!-- VIDEO: https://youtu.be/TODO-notion-export -->
-
 ## How to get your data
 
 1. Open Notion and go to **Settings** (click your workspace name → Settings)

@@ -497,6 +497,8 @@ def map_claude(export: dict[str, Any]) -> list[dict[str, Any]]:
     migrated_at = _now_utc()
 
     for conv in export.get("memories", []) or []:
+        if not isinstance(conv, dict):
+            continue
         conv_title = (conv.get("name") or "").strip() or None
 
         for msg in conv.get("chat_messages", []) or []:

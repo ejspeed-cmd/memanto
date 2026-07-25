@@ -1,7 +1,5 @@
 # Chroma export guide
 
-<!-- VIDEO: https://youtu.be/TODO-chroma-export -->
-
 ## How to get your data
 
 No export file needed — the CLI connects live to a running ChromaDB instance.

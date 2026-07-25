@@ -137,7 +137,7 @@ def run(agent_id: str, golden_path: Path) -> int:
 
     _print_table(results)
 
-    print(f"Result: {passed}/{len(golden)} passed  (threshold {PASS_THRESHOLD}/10, min score {MIN_SCORE_TO_PASS}/15)")
+    print(f"Result: {passed}/{len(golden)} passed  (threshold {PASS_THRESHOLD}/{len(golden)}, min score {MIN_SCORE_TO_PASS}/15)")
 
     if passed >= PASS_THRESHOLD:
         print("PASS")

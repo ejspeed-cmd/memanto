@@ -1,6 +1,6 @@
 # Gemini export guide
 
-<!-- VIDEO: https://youtu.be/TODO-gemini-export -->
+<!-- VIDEO -->
 
 ## How to get your data
 

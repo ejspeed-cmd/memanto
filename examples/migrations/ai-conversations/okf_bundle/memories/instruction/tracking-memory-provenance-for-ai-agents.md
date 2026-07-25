@@ -6,7 +6,7 @@ description: I need a simple way to track which memories my AI agent added vs wh
 timestamp: '2025-08-15T01:21:15.566602+00:00'
 resource: 3d4cbf37-4eb9-3eff-ce88-cb2dd4e80839
 x_memanto:
-  id: f87d219e-768f-412d-a990-d58795dcf704
+  id: b9862297-fcf2-439d-b60e-5c6ccad8920c
   confidence: 0.8
   provenance: imported
   source: claude

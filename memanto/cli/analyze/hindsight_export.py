@@ -16,6 +16,7 @@ Auth: ``authorization: <api_key>`` header (no Bearer prefix).
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,10 +138,10 @@ def run_hindsight_export(
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / "hindsight_export.json"
     tmp_path = out_path.with_suffix(".json.tmp")
-    import os as _os
-    fd = _os.open(str(tmp_path), _os.O_CREAT | _os.O_EXCL | _os.O_WRONLY, 0o600)
+    tmp_path.unlink(missing_ok=True)
+    fd = os.open(str(tmp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        with _os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(export, f, indent=2, ensure_ascii=False, default=str)
         tmp_path.replace(out_path)
     except BaseException:

@@ -6,7 +6,7 @@ description: Building a RAG pipeline for a codebase. Should I chunk by file, by 
 timestamp: '2025-07-27T21:34:33.592529+00:00'
 resource: 77d21e02-ff01-cf99-988c-24c961b1cd22
 x_memanto:
-  id: 4d5f2d7c-6c76-41b6-8ccc-b5ef637ad26c
+  id: 56e48657-5fbc-4a43-a269-bb9848c5cca5
   confidence: 0.8
   provenance: imported
   source: claude

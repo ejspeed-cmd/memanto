@@ -69,3 +69,14 @@
 
 ---
 
+### [2025-08-19 21:47:58] [FACT] I want to open-source my LLM memory benchmarking tool. What license and repo str
+- **Memory ID**: `e2987ccb-e48f-4658-ad98-2751bceed931`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `gemini`
+- **Provenance**: `imported`
+- **Content**:
+> I want to open-source my LLM memory benchmarking tool. What license and repo str
+
+---
+

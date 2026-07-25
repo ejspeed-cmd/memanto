@@ -6,7 +6,7 @@ description: How do I set up Qdrant locally with Docker and connect it from a Ru
 timestamp: '2025-06-25T10:24:38.527662+00:00'
 resource: ab9099a4-35a2-40ae-5af3-05535ec42e08
 x_memanto:
-  id: c4cbae2a-5007-4314-9771-8fe68626abe5
+  id: b7a5dd9a-a3fa-49eb-93a9-834426e4424b
   confidence: 0.8
   provenance: imported
   source: chatgpt

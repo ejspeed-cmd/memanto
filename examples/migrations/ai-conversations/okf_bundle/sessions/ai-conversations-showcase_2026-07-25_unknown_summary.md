@@ -348,3 +348,72 @@
 
 ---
 
+### [2026-07-25 16:23:16] [GOAL] Build an open-source agentic memory layer.
+- **Memory ID**: `19fb904e-887f-45ec-9552-7ef21a53102a`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `langgraph`
+- **Provenance**: `imported`
+- **Tags**: `project/example-project`
+- **Content**:
+> Build an open-source agentic memory layer.
+> 
+> ---
+> [Supporting data]
+> - Namespace: project/example-project
+> - Key: goal-1
+> - Priority: high
+
+---
+
+### [2026-07-25 16:23:16] [FACT] Alice is based in Berlin, Germany.
+- **Memory ID**: `7ab80338-6d6c-4acd-a396-4ed315020997`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `langgraph`
+- **Provenance**: `imported`
+- **Tags**: `user/alice/facts`
+- **Content**:
+> Alice is based in Berlin, Germany.
+> 
+> ---
+> [Supporting data]
+> - Namespace: user/alice/facts
+> - Key: location
+
+---
+
+### [2026-07-25 16:23:16] [FACT] Alice uses VSCode with dark mode as her primary editor.
+- **Memory ID**: `ed96a3f5-1047-4e5a-9a5a-b201c2d950e4`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `langgraph`
+- **Provenance**: `imported`
+- **Tags**: `user/alice/memories`
+- **Content**:
+> Alice uses VSCode with dark mode as her primary editor.
+> 
+> ---
+> [Supporting data]
+> - Namespace: user/alice/memories
+> - Key: pref-editor
+
+---
+
+### [2026-07-25 16:23:16] [PREFERENCE] Alice prefers Python and FastAPI over JavaScript.
+- **Memory ID**: `c58c510a-e8b3-479d-ab79-9e89c4d21835`
+- **Confidence**: `0.8`
+- **Status**: `active`
+- **Source**: `langgraph`
+- **Provenance**: `imported`
+- **Tags**: `user/alice/memories`
+- **Content**:
+> Alice prefers Python and FastAPI over JavaScript.
+> 
+> ---
+> [Supporting data]
+> - Namespace: user/alice/memories
+> - Key: pref-lang
+
+---
+

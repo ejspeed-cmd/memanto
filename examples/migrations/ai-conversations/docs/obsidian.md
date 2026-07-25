@@ -1,6 +1,5 @@
 # Obsidian export guide
 
-<!-- VIDEO: https://youtu.be/TODO-obsidian-export -->
 
 ## How to get your data
 

@@ -1,6 +1,6 @@
 # Claude export guide
 
-<!-- VIDEO: https://youtu.be/TODO-claude-export -->
+<!-- VIDEO -->
 
 ## How to get your data
 

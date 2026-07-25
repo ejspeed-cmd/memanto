@@ -7,7 +7,7 @@ description: 'Getting a lifetime error in my parser: `error[E0597]: borrowed val
 timestamp: '2025-07-06T01:04:18.677629+00:00'
 resource: 6b65a6a4-8b81-48f6-b38a-088ca65ed389
 x_memanto:
-  id: a1fa4ac7-7f03-4b01-8962-5c9274c939ea
+  id: 2a5d4e11-9097-42c0-9214-14b1a3d2066d
   confidence: 0.8
   provenance: imported
   source: chatgpt
