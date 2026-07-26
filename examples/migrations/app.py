@@ -10,6 +10,7 @@ Run:
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
@@ -157,11 +158,19 @@ PROVIDERS = {
     "gemini": "Gemini",
 }
 
+_ICO_DIR = Path(__file__).parent / "ico"
+
 PROVIDER_LOGOS = {
-    "chatgpt": "https://upload.wikimedia.org/wikipedia/commons/e/ef/ChatGPT-Logo.svg",
-    "claude": "https://upload.wikimedia.org/wikipedia/commons/b/b0/Claude_AI_symbol.svg",
-    "gemini": "https://upload.wikimedia.org/wikipedia/commons/1/1d/Google_Gemini_icon_2025.svg",
+    "chatgpt": str(_ICO_DIR / "chatgpt.svg"),
+    "claude":  str(_ICO_DIR / "claude.svg"),
+    "gemini":  str(_ICO_DIR / "gemini.svg"),
 }
+
+
+def _svg_data_uri(path: str) -> str:
+    data = Path(path).read_bytes()
+    b64 = base64.b64encode(data).decode()
+    return f"data:image/svg+xml;base64,{b64}"
 
 EXPORT_INSTRUCTIONS = {
     "chatgpt": "**ChatGPT:** Settings → Data controls → Export data → confirm email → download ZIP",
@@ -284,7 +293,7 @@ def sidebar():
         st.markdown("**Supported providers:**")
         for provider, name in PROVIDERS.items():
             st.markdown(
-                f'<img src="{PROVIDER_LOGOS[provider]}" height="16" style="vertical-align:middle;margin-right:6px">{name}',
+                f'<img src="{_svg_data_uri(PROVIDER_LOGOS[provider])}" height="16" style="vertical-align:middle;margin-right:6px">{name}',
                 unsafe_allow_html=True,
             )
         st.divider()
@@ -299,28 +308,14 @@ def main():
     st.markdown("Upload your AI conversation export and migrate your memories into Memanto.")
 
     col1, col2, col3 = st.columns(3)
-    source = None
-    with col1:
-        st.markdown(
-            f'<div style="text-align:center"><img src="{PROVIDER_LOGOS["chatgpt"]}" height="48" style="margin-bottom:8px"></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("ChatGPT", use_container_width=True):
-            st.session_state["source"] = "chatgpt"
-    with col2:
-        st.markdown(
-            f'<div style="text-align:center"><img src="{PROVIDER_LOGOS["claude"]}" height="48" style="margin-bottom:8px"></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Claude", use_container_width=True):
-            st.session_state["source"] = "claude"
-    with col3:
-        st.markdown(
-            f'<div style="text-align:center"><img src="{PROVIDER_LOGOS["gemini"]}" height="48" style="margin-bottom:8px"></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Gemini", use_container_width=True):
-            st.session_state["source"] = "gemini"
+    for col, provider in zip((col1, col2, col3), PROVIDERS):
+        with col:
+            icon_uri = _svg_data_uri(PROVIDER_LOGOS[provider])
+            # A Markdown image inside a button label is rendered inline and
+            # auto-scaled to font height, so it sits before the text exactly
+            # like an emoji glyph would — no separate image element needed.
+            if st.button(f"![]({icon_uri}) {PROVIDERS[provider]}", use_container_width=True):
+                st.session_state["source"] = provider
 
     source = st.session_state.get("source")
 
@@ -339,7 +334,7 @@ def main():
 
     st.markdown(f"### {PROVIDERS[source]} Migration")
     st.markdown(
-        f'<img src="{PROVIDER_LOGOS[source]}" height="32" style="vertical-align:middle;margin-right:8px">',
+        f'<img src="{_svg_data_uri(PROVIDER_LOGOS[source])}" height="32" style="vertical-align:middle;margin-right:8px">',
         unsafe_allow_html=True,
     )
     st.info(EXPORT_INSTRUCTIONS[source])
