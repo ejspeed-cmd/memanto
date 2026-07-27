@@ -68,6 +68,9 @@ Exits 0 if 8+ of 10 questions pass (score ≥ 10/15 each).
 | Notion | `migrate notion --file export.zip` | markdown body after frontmatter | `artifact` | `notion` |
 | Obsidian | `migrate obsidian --file ./vault` | markdown body after frontmatter | `artifact` | `obsidian` |
 | Chroma | `migrate chroma --collection <name>` | `document` | auto | `chroma` |
+| Mem0 | `migrate mem0` | `memory` (primary) / `content` (fallback) | via category map | `mem0` |
+| Letta | `migrate letta` | `text` (primary) / `content` (fallback) from archival passages | `observation` | `letta` |
+| Supermemory | `migrate supermemory` | `content` (primary) / `memory` / `text` (fallbacks) | `auto` or `artifact` (chunk fallback) | `supermemory` |
 
 All providers set `provenance = "imported"` and `confidence = 0.8`.
 
@@ -84,6 +87,9 @@ All providers set `provenance = "imported"` and `confidence = 0.8`.
 - [Notion](docs/notion.md)
 - [Obsidian](docs/obsidian.md)
 - [Chroma](docs/chroma.md)
+- [Mem0](docs/mem0.md)
+- [Letta](docs/letta.md)
+- [Supermemory](docs/supermemory.md)
 
 ---
 
@@ -107,7 +113,10 @@ ai-conversations/
 │   ├── migrate_zep.py
 │   ├── migrate_hindsight.py
 │   ├── migrate_langgraph.py
-│   └── migrate_chroma.py
+│   ├── migrate_chroma.py
+│   ├── migrate_mem0.py
+│   ├── migrate_letta.py
+│   └── migrate_supermemory.py
 ├── validation/
 │   ├── golden_qa.json      # 10 Q&A pairs for recall validation
 │   └── validate.py         # LLM judge runner

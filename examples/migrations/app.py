@@ -28,6 +28,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Explicit widget key for the API-key-provider selectbox. Giving it a key
+# means we control its value directly through session_state, instead of
+# letting Streamlit's default "remembered widget state" silently win over
+# our own state changes on rerun (this was the root cause of the "can't
+# switch back to a ZIP provider" bug).
+API_SOURCE_KEY = "api_source_select"
+
 # ---------------------------------------------------------------------------
 # Lazy imports — memanto must be installed (pip install -e .)
 # ---------------------------------------------------------------------------
@@ -50,8 +57,6 @@ def _load_memanto():
 
 def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
     """Normalize a Google Takeout Gemini ZIP into {memories: [...]}."""
-    import html
-    import html.parser
     import re
 
     json_hits = list(tmp_path.rglob("My Activity.json"))
@@ -121,6 +126,39 @@ def _load_export_from_bytes(file_bytes: bytes, source: str) -> dict[str, Any]:
         return _parse_gemini_archive(tmp_path)
 
 
+def _fetch_export(source: str, provider_key: str, **kwargs) -> dict | None:
+    cache_key = f"export_{source}"
+    if st.session_state.get(cache_key):
+        return st.session_state[cache_key]
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            if source == "mem0":
+                from memanto.cli.analyze.mem0_export import run_mem0_export
+                _, export = run_mem0_export(provider_key, tmp_path)
+            elif source == "letta":
+                from memanto.cli.analyze.letta_export import run_letta_export
+                _, export = run_letta_export(provider_key, tmp_path)
+            elif source == "supermemory":
+                from memanto.cli.analyze.supermemory_export import run_supermemory_export
+                _, export = run_supermemory_export(provider_key, tmp_path)
+            elif source == "zep":
+                from memanto.cli.analyze.zep_export import run_zep_export
+                _, export = run_zep_export(provider_key, tmp_path)
+            elif source == "hindsight":
+                from memanto.cli.analyze.hindsight_export import run_hindsight_export
+                base_url = kwargs.get("base_url")
+                kw = {"base_url": base_url} if base_url else {}
+                _, export = run_hindsight_export(provider_key, tmp_path, **kw)
+            else:
+                raise ValueError(f"Unknown source: {source}")
+        st.session_state[cache_key] = export
+        return export
+    except Exception as exc:
+        st.error(str(exc))
+        return None
+
+
 def _run_dry_run(source: str, export: dict[str, Any]) -> tuple[list[dict], dict]:
     MAPPERS, run_migration, _ = _load_memanto()
     summary, rows = run_migration(
@@ -153,19 +191,129 @@ def _do_migrate(source: str, export: dict[str, Any], agent_id: str, api_key: str
 # ---------------------------------------------------------------------------
 
 PROVIDERS = {
-    "chatgpt": "ChatGPT",
-    "claude": "Claude",
-    "gemini": "Gemini",
+    "chatgpt":     "ChatGPT",
+    "claude":      "Claude",
+    "gemini":      "Gemini",
+    "mem0":        "Mem0",
+    "letta":       "Letta",
+    "supermemory": "Supermemory",
+    "zep":         "Zep",
+    "hindsight":   "Hindsight",
 }
 
 _ICO_DIR = Path(__file__).parent / "ico"
 
 PROVIDER_LOGOS = {
-    "chatgpt": str(_ICO_DIR / "chatgpt.svg"),
-    "claude":  str(_ICO_DIR / "claude.svg"),
-    "gemini":  str(_ICO_DIR / "gemini.svg"),
+    "chatgpt":     str(_ICO_DIR / "chatgpt.svg"),
+    "claude":      str(_ICO_DIR / "claude.svg"),
+    "gemini":      str(_ICO_DIR / "gemini.svg"),
+    "mem0":        str(_ICO_DIR / "mem0.svg"),
+    "letta":       str(_ICO_DIR / "letta.svg"),
+    "supermemory": str(_ICO_DIR / "supermemory.svg"),
+    "zep":         str(_ICO_DIR / "zep.svg"),
+    "hindsight":   str(_ICO_DIR / "hindsight.svg"),
 }
 
+API_KEY_PROVIDERS = {
+    "mem0":        "MEM0_API_KEY",
+    "letta":       "LETTA_API_KEY",
+    "supermemory": "SUPERMEMORY_API_KEY",
+    "zep":         "ZEP_API_KEY",
+    "hindsight":   "HINDSIGHT_API_KEY",
+}
+
+
+def _render_api_key_panel(source: str, agent_id: str) -> None:
+    env_var = API_KEY_PROVIDERS[source]
+    key = st.text_input(env_var, type="password", value=os.environ.get(env_var, ""))
+
+    base_url = ""
+    if source == "hindsight":
+        base_url = st.text_input(
+            "HINDSIGHT_BASE_URL",
+            value="https://api.hindsight.vectorize.io",
+        )
+
+    uploaded = st.file_uploader(
+        "Optional: pre-exported JSON (skips live API call)",
+        type=["json"],
+        key=f"upload_{source}",
+    )
+    export: dict | None = None
+    if uploaded:
+        try:
+            export = json.loads(uploaded.read())
+        except Exception as exc:
+            st.error(str(exc))
+            return
+
+    col_dry, col_migrate = st.columns(2)
+
+    with col_dry:
+        if st.button("🔍 Dry run", use_container_width=True):
+            if not key.strip():
+                st.warning(f"{env_var} is required.")
+            elif source == "hindsight" and not base_url.strip():
+                st.warning("HINDSIGHT_BASE_URL is required.")
+            else:
+                live = export
+                if live is None:
+                    with st.spinner("Fetching export..."):
+                        live = _fetch_export(source, key.strip(), base_url=base_url.strip())
+                if live is not None:
+                    with st.spinner("Mapping records..."):
+                        rows, summary = _run_dry_run(source, live)
+                    st.session_state[f"dry_run_rows_{source}"] = rows
+                    st.session_state[f"dry_run_summary_{source}"] = summary
+                    st.session_state.pop(f"migrate_result_{source}", None)
+
+    with col_migrate:
+        if st.button("🚀 Migrate", type="primary", use_container_width=True):
+            if not key.strip():
+                st.warning(f"{env_var} is required.")
+            elif not agent_id:
+                st.warning("Select or create a target namespace in the sidebar.")
+            elif source == "hindsight" and not base_url.strip():
+                st.warning("HINDSIGHT_BASE_URL is required.")
+            else:
+                live = export
+                if live is None:
+                    with st.spinner("Fetching export..."):
+                        live = _fetch_export(source, key.strip(), base_url=base_url.strip())
+                if live is not None:
+                    with st.spinner("Migrating..."):
+                        result = _do_migrate(source, live, agent_id, st.session_state.get("_loaded_api_key", ""))
+                    st.session_state[f"migrate_result_{source}"] = result
+                    st.session_state.pop(f"dry_run_rows_{source}", None)
+                    st.session_state.pop(f"dry_run_summary_{source}", None)
+
+    summary = st.session_state.get(f"dry_run_summary_{source}")
+    rows = st.session_state.get(f"dry_run_rows_{source}")
+    migrate_result = st.session_state.get(f"migrate_result_{source}")
+
+    if migrate_result:
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Imported", migrate_result["imported"])
+        m2.metric("Failed", migrate_result["failed"])
+        m3.metric("Batches", migrate_result["batches"])
+    elif summary:
+        st.divider()
+        st.markdown("### Preview")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Source records", summary["source_count"])
+        m2.metric("Mapped memories", summary["mapped_count"])
+        m3.metric("Skipped (empty)", summary["skipped"])
+        if summary.get("type_counts"):
+            st.markdown("**Type breakdown**")
+            st.json(summary["type_counts"])
+        if rows:
+            st.markdown("**Sample memories**")
+            for row in rows[:5]:
+                with st.expander(row.get("title", "Memory")[:80], expanded=False):
+                    st.markdown(f"**Content:**\n\n{row.get('content', '')[:600]}")
+                    st.markdown(f"**Type:** `{row.get('type') or 'auto'}`  |  **Source:** `{row.get('source')}`  |  **Provenance:** `{row.get('provenance')}`")
+            if len(rows) > 5:
+                st.caption(f"...and {len(rows) - 5} more memories")
 
 def _svg_data_uri(path: str) -> str:
     data = Path(path).read_bytes()
@@ -179,37 +327,36 @@ EXPORT_INSTRUCTIONS = {
 }
 
 
-_MEMANTO_PREFIX = "memanto_agent_"
-
-
-def _moorcheh_client(api_key: str):
-    from moorcheh_sdk import MoorchehClient
-    return MoorchehClient(api_key=api_key)
-
-
 def _fetch_agents(api_key: str) -> list[str]:
-    """Return agent_ids (without the memanto_agent_ prefix) from Moorcheh cloud."""
     try:
-        client = _moorcheh_client(api_key)
+        from moorcheh_sdk import MoorchehClient
+        client = MoorchehClient(api_key=api_key)
         result = client.namespaces.list()
+        prefix = "memanto_agent_"
         namespaces = result.get("namespaces", []) if isinstance(result, dict) else result
-        ids = []
-        for ns in namespaces:
-            name = ns.get("namespace_name", "")
-            if name.startswith(_MEMANTO_PREFIX):
-                ids.append(name[len(_MEMANTO_PREFIX):])
-        return ids
+        return [
+            ns["namespace_name"][len(prefix):]
+            for ns in namespaces
+            if isinstance(ns, dict) and ns.get("namespace_name", "").startswith(prefix)
+        ]
     except Exception:
         return []
 
 
 def _create_agent(api_key: str, agent_id: str) -> tuple[bool, str]:
     try:
+        from memanto.app.utils.errors import AgentAlreadyExistsError
+    except ImportError:
+        AgentAlreadyExistsError = None  # fall back to string-matching below
+
+    try:
         _, _, SdkClient = _load_memanto()
         client = SdkClient(api_key=api_key)
         client.create_agent(agent_id=agent_id, pattern="tool")
         return True, f"Namespace '{agent_id}' created."
     except Exception as exc:
+        if AgentAlreadyExistsError is not None and isinstance(exc, AgentAlreadyExistsError):
+            return True, f"Namespace '{agent_id}' already exists — using it."
         if "already exists" in str(exc).lower():
             return True, f"Namespace '{agent_id}' already exists — using it."
         return False, str(exc)
@@ -307,15 +454,44 @@ def main():
     st.title("🧠 Memanto Migration")
     st.markdown("Upload your AI conversation export and migrate your memories into Memanto.")
 
+    ZIP_PROVIDERS = ["chatgpt", "claude", "gemini"]
     col1, col2, col3 = st.columns(3)
-    for col, provider in zip((col1, col2, col3), PROVIDERS):
+    for col, provider in zip((col1, col2, col3), ZIP_PROVIDERS):
         with col:
             icon_uri = _svg_data_uri(PROVIDER_LOGOS[provider])
-            # A Markdown image inside a button label is rendered inline and
-            # auto-scaled to font height, so it sits before the text exactly
-            # like an emoji glyph would — no separate image element needed.
             if st.button(f"![]({icon_uri}) {PROVIDERS[provider]}", use_container_width=True):
                 st.session_state["source"] = provider
+                # Reset the API-key selectbox's own widget state *before* it
+                # renders below. Without this, the selectbox would still be
+                # holding whatever API-key provider was previously chosen,
+                # and the block underneath would immediately overwrite
+                # "source" back to that stale value on this same rerun —
+                # this was the reason the ZIP buttons appeared "stuck".
+                st.session_state[API_SOURCE_KEY] = "—"
+
+    st.divider()
+    st.subheader("API-key providers")
+
+    current_source = st.session_state.get("source")
+    api_options = ["—"] + list(API_KEY_PROVIDERS.keys())
+
+    if API_SOURCE_KEY not in st.session_state:
+        st.session_state[API_SOURCE_KEY] = current_source if current_source in API_KEY_PROVIDERS else "—"
+
+    api_source = st.selectbox(
+        "Select provider",
+        api_options,
+        format_func=lambda k: PROVIDERS.get(k, k),
+        key=API_SOURCE_KEY,
+    )
+
+    if api_source != "—":
+        st.session_state["source"] = api_source
+    elif current_source in API_KEY_PROVIDERS:
+        # Dropdown was explicitly reset to "—" while an API provider was
+        # active — clear the selected source rather than leaving a stale
+        # provider active with no visible selection anywhere.
+        st.session_state["source"] = None
 
     source = st.session_state.get("source")
 
@@ -337,6 +513,11 @@ def main():
         f'<img src="{_svg_data_uri(PROVIDER_LOGOS[source])}" height="32" style="vertical-align:middle;margin-right:8px">',
         unsafe_allow_html=True,
     )
+
+    if source in API_KEY_PROVIDERS:
+        _render_api_key_panel(source, agent_id)
+        return
+
     st.info(EXPORT_INSTRUCTIONS[source])
 
     uploaded = st.file_uploader(
@@ -359,12 +540,15 @@ def main():
     if st.button("🔍 Preview mapped memories (dry run)", use_container_width=True):
         with st.spinner("Mapping records..."):
             rows, summary = _run_dry_run(source, export)
-        st.session_state["preview_rows"] = rows
-        st.session_state["preview_summary"] = summary
+        # Namespaced per-source so switching ChatGPT -> Claude -> Gemini
+        # (or back) can never show a stale preview left over from a
+        # different provider.
+        st.session_state[f"preview_rows_{source}"] = rows
+        st.session_state[f"preview_summary_{source}"] = summary
 
-    if "preview_rows" in st.session_state and st.session_state.get("preview_rows"):
-        rows = st.session_state["preview_rows"]
-        summary = st.session_state["preview_summary"]
+    if st.session_state.get(f"preview_rows_{source}"):
+        rows = st.session_state[f"preview_rows_{source}"]
+        summary = st.session_state[f"preview_summary_{source}"]
 
         st.divider()
         st.markdown("### Preview")

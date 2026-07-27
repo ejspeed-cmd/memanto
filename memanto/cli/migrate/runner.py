@@ -100,27 +100,36 @@ def source_count(provider: str, export: dict[str, Any]) -> int:
             if not isinstance(mapping, dict):
                 continue
             current_node = conv.get("current_node")
-            if not mapping or not current_node:
-                continue
-            seen: set[str] = set()
-            node_id = current_node
-            while node_id and node_id not in seen:
-                seen.add(node_id)
-                node = mapping.get(node_id)
-                if not isinstance(node, dict):
-                    break
-                msg = node.get("message")
-                if isinstance(msg, dict):
+            if current_node:
+                seen: set[str] = set()
+                node_id = current_node
+                while node_id and node_id not in seen:
+                    seen.add(node_id)
+                    node = mapping.get(node_id)
+                    if not isinstance(node, dict):
+                        break
+                    msg = node.get("message")
+                    if isinstance(msg, dict):
+                        author = msg.get("author") or {}
+                        content_obj = msg.get("content") or {}
+                        if (
+                            author.get("role") == "user"
+                            and content_obj.get("content_type", "text") != "user_editable_context"
+                        ):
+                            parts = content_obj.get("parts") or []
+                            if any(isinstance(p, str) and p.strip() for p in parts):
+                                count += 1
+                    node_id = node.get("parent")
+            else:
+                for node in mapping.values():
+                    if not isinstance(node, dict):
+                        continue
+                    msg = node.get("message")
+                    if not isinstance(msg, dict):
+                        continue
                     author = msg.get("author") or {}
-                    content_obj = msg.get("content") or {}
-                    if (
-                        author.get("role") == "user"
-                        and content_obj.get("content_type", "text") != "user_editable_context"
-                    ):
-                        parts = content_obj.get("parts") or []
-                        if any(isinstance(p, str) and p.strip() for p in parts):
-                            count += 1
-                node_id = node.get("parent")
+                    if author.get("role") == "user":
+                        count += 1
         return count
     if provider in ("claude", "gemini"):
         role_key = "sender" if provider == "claude" else "role"
