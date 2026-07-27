@@ -15,14 +15,14 @@ Auth: ``authorization: <api_key>`` header (no Bearer prefix).
 
 from __future__ import annotations
 
-import json
-import os
+import httpx
+
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
+from memanto.cli.analyze.zep_export import _write_export_json
 
 DEFAULT_BASE_URL = "https://api.hindsight.vectorize.io"
 PAGE_SIZE = 100
@@ -136,16 +136,6 @@ def run_hindsight_export(
     }
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    out_path = dest_dir / "hindsight_export.json"
-    tmp_path = out_path.with_suffix(".json.tmp")
-    tmp_path.unlink(missing_ok=True)
-    fd = os.open(str(tmp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(export, f, indent=2, ensure_ascii=False, default=str)
-        tmp_path.replace(out_path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    out_path = _write_export_json(export, dest_dir, "hindsight_export.json")
 
     return out_path, export

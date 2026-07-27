@@ -159,7 +159,14 @@ def run_zep_export(
     }
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    out_path = dest_dir / "zep_export.json"
+    out_path = _write_export_json(export, dest_dir, "zep_export.json")
+
+    return out_path, export
+
+
+def _write_export_json(export: dict[str, Any], dest_dir: Path, filename: str) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    out_path = dest_dir / filename
     tmp_path = out_path.with_suffix(".json.tmp")
     tmp_path.unlink(missing_ok=True)
     fd = os.open(str(tmp_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -170,5 +177,4 @@ def run_zep_export(
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
-
-    return out_path, export
+    return out_path

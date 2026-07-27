@@ -23,14 +23,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Migrate Obsidian vault to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)
+    parser.add_argument("--vault", default=VAULT_PATH, help="Path to Obsidian vault directory")
     args = parser.parse_args()
 
-    if not Path(VAULT_PATH).is_dir():
-        print(f"Vault directory not found: {VAULT_PATH}", file=sys.stderr)
-        print("Set VAULT_PATH at the top of this script to your Obsidian vault directory.", file=sys.stderr)
+    if not Path(args.vault).is_dir():
+        print(f"Vault directory not found: {args.vault}", file=sys.stderr)
+        print("Set VAULT_PATH at the top of this script or pass --vault.", file=sys.stderr)
         return 1
 
-    cmd = ["memanto", "migrate", "obsidian", VAULT_PATH]
+    cmd = ["memanto", "migrate", "obsidian", args.vault]
     if args.dry_run:
         cmd.append("--dry-run")
     if args.agent:

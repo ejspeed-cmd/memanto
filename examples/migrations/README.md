@@ -1,7 +1,7 @@
-# ai-conversations migration showcase
+# memanto migration showcase
 
 Demonstrates the full **in → owned → portable** loop using Memanto's migration CLI.
-Import conversation history and notes from 9 providers, validate recall with an LLM judge,
+Import conversation history and notes from 12 providers, validate recall with an LLM judge,
 and export an OKF bundle — all from a single directory.
 
 ---
@@ -9,7 +9,7 @@ and export an OKF bundle — all from a single directory.
 ## Setup
 
 ```bash
-cd examples/migrations/ai-conversations
+cd examples/migrations/
 pip install -r requirements.txt
 cp .env.example .env
 # fill in MOORCHEH_API_KEY and any provider keys you want to use
@@ -95,12 +95,27 @@ All providers set `provenance = "imported"` and `confidence = 0.8`.
 
 ## Directory structure
 
-```
-ai-conversations/
+```text
+migrations/
+├── app.py                  # Streamlit UI (8 providers)
 ├── migrate.py              # single-command showcase runner
 ├── requirements.txt
 ├── .env.example
 ├── sample_data/            # de-identified export ZIPs (chatgpt, claude, gemini)
+├── ico/                    # provider SVG logos
+├── docs/                   # per-provider export guides
+│   ├── chatgpt.md
+│   ├── claude.md
+│   ├── gemini.md
+│   ├── zep.md
+│   ├── hindsight.md
+│   ├── langgraph.md
+│   ├── notion.md
+│   ├── obsidian.md
+│   ├── chroma.md
+│   ├── mem0.md
+│   ├── letta.md
+│   └── supermemory.md
 ├── scripts/
 │   ├── generate_sample_data.py
 │   ├── dump_langgraph.py
@@ -108,11 +123,11 @@ ai-conversations/
 │   ├── migrate_chatgpt.py
 │   ├── migrate_claude.py
 │   ├── migrate_gemini.py
-│   ├── migrate_notion.py
-│   ├── migrate_obsidian.py
 │   ├── migrate_zep.py
 │   ├── migrate_hindsight.py
 │   ├── migrate_langgraph.py
+│   ├── migrate_notion.py
+│   ├── migrate_obsidian.py
 │   ├── migrate_chroma.py
 │   ├── migrate_mem0.py
 │   ├── migrate_letta.py

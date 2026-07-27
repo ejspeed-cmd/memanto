@@ -345,10 +345,10 @@ class TestMapGemini:
         rows = map_gemini(export)
         assert rows[0]["created_at"] is not None
 
-    def test_source_ref_is_conv_id(self):
+    def test_source_ref_is_unique_per_message(self):
         export = _gemini_export("hello", conv_id="gemini-conv-42")
         rows = map_gemini(export)
-        assert rows[0]["source_ref"] == "gemini-conv-42"
+        assert rows[0]["source_ref"] == "gemini-conv-42:0"
 
     def test_multiple_user_messages_same_conv(self):
         export = _gemini_export("first", "second")

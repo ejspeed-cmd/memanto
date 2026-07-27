@@ -562,7 +562,7 @@ def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
         except (AttributeError, TypeError):
             continue
 
-        for msg in messages:
+        for msg_idx, msg in enumerate(messages):
             try:
                 if msg.get("role") != "user":
                     continue
@@ -572,9 +572,12 @@ def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
             except (AttributeError, TypeError):
                 continue
 
+            conv_id = conv.get("id")
+            source_ref = f"{conv_id}:{msg_idx}" if conv_id else None
+
             footer = _format_supporting_data(
                 [
-                    ("Conversation id", conv.get("id")),
+                    ("Conversation id", conv_id),
                 ]
             )
 
@@ -586,7 +589,7 @@ def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
                     "tags": [],
                     "confidence": 0.8,
                     "source": "gemini",
-                    "source_ref": str(conv.get("id")) if conv.get("id") else None,
+                    "source_ref": source_ref,
                     "provenance": "imported",
                     "created_at": created_at,
                     "updated_at": migrated_at,

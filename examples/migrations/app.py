@@ -107,6 +107,11 @@ def _load_export_from_bytes(file_bytes: bytes, source: str) -> dict[str, Any]:
         tmp_path = Path(tmp)
         try:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                for member in zf.infolist():
+                    dest = (tmp_path / member.filename).resolve()
+                    if not str(dest).startswith(str(tmp_path.resolve())):
+                        st.error("ZIP archive contains unsafe paths and cannot be extracted.")
+                        st.stop()
                 zf.extractall(tmp)
         except zipfile.BadZipFile:
             st.error("Could not read the ZIP file. Make sure you uploaded a valid export archive.")
@@ -557,7 +562,7 @@ def main():
         m2.metric("Mapped memories", summary["mapped_count"])
         m3.metric("Skipped (empty)", summary["skipped"])
 
-        if summary["type_counts"]:
+        if summary.get("type_counts"):
             st.markdown("**Type breakdown**")
             st.json(summary["type_counts"])
 
