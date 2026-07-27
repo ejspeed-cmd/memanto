@@ -20,6 +20,12 @@ ZIP_PATH = "/path/to/notion_export.zip"
 
 
 def main() -> int:
+    """
+    Migrate a Notion export ZIP into Memanto using the command-line interface.
+    
+    Returns:
+        int: The Memanto command's exit code, or `1` when the export file is missing.
+    """
     parser = argparse.ArgumentParser(description="Migrate Notion export to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

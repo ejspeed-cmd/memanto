@@ -20,6 +20,11 @@ ZIP_PATH = str(Path(__file__).parent.parent / "sample_data" / "claude_export.zip
 
 
 def main() -> int:
+    """Migrate a Claude conversation export into Memanto.
+    
+    Returns:
+        int: The migration command's exit status, or 1 if the configured export ZIP is missing.
+    """
     parser = argparse.ArgumentParser(description="Migrate Claude export to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

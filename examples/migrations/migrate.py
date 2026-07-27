@@ -29,12 +29,31 @@ _SCRIPTS = _HERE / "scripts"
 
 
 def _run(cmd: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
+    """
+    Run a subprocess with the current environment and optional environment overrides.
+    
+    Parameters:
+    	cmd (list[str]): Command and arguments to execute.
+    	extra_env (dict | None): Environment variables to add or override.
+    
+    Returns:
+    	subprocess.CompletedProcess: The completed subprocess result, including captured output and exit status.
+    """
     import os
     env = {**os.environ, **(extra_env or {})}
     return subprocess.run(cmd, capture_output=True, text=True, env=env)
 
 
 def _parse_summary(stdout: str) -> dict:
+    """
+    Parse migration output into record counts and a type breakdown.
+    
+    Parameters:
+    	stdout (str): Migration output containing summary fields.
+    
+    Returns:
+    	dict: A summary with source record, mapped, and skipped counts, plus counts grouped by type.
+    """
     summary = {"source_records": 0, "mapped": 0, "skipped": 0, "types": {}}
     for line in stdout.splitlines():
         stripped = line.strip()
@@ -65,6 +84,17 @@ def _parse_summary(stdout: str) -> dict:
 
 
 def _run_conversation(source: str, agent: str | None, dry_run: bool) -> dict | None:
+    """
+    Run a conversation migration for a sample source export.
+    
+    Parameters:
+    	source (str): Conversation export source name used to locate the sample ZIP file.
+    	agent (str | None): Target agent identifier for the migration, when provided.
+    	dry_run (bool): Whether to preview the migration without writing changes.
+    
+    Returns:
+    	dict | None: A migration summary containing record counts, type breakdown, exit status, and any detected error; `None` if the sample ZIP file is missing.
+    """
     zip_path = _SAMPLE / f"{source}_export.zip"
     if not zip_path.exists():
         print(f"  [skip] {zip_path} not found")
@@ -98,6 +128,15 @@ def _run_conversation(source: str, agent: str | None, dry_run: bool) -> dict | N
 
 
 def _run_langgraph(agent: str | None, dry_run: bool) -> dict | None:
+    """Run the langgraph migration for the available seed file.
+    
+    Parameters:
+    	agent (str | None): Target agent identifier for the migration.
+    	dry_run (bool): Whether to preview the migration without writing changes.
+    
+    Returns:
+    	dict | None: A parsed migration summary with exit status and error details, or `None` if the seed file is missing.
+    """
     seed = _SCRIPTS / "langgraph_seed.json"
     if not seed.exists():
         return None
@@ -125,10 +164,24 @@ def _run_langgraph(agent: str | None, dry_run: bool) -> dict | None:
 
 
 def _print_table(rows: list[tuple]) -> None:
+    """Print a fixed-width summary table for migration results.
+    
+    Parameters:
+    	rows (list[tuple]): Rows containing source, record counts, type details, and status.
+    """
     headers = ["source", "records", "mapped", "skipped", "types", "status"]
     widths = [12, 9, 8, 9, 28, 8]
 
     def fmt(vals):
+        """
+        Format values as a fixed-width row with two-space column separators.
+        
+        Parameters:
+        	vals: Values to format according to the configured column widths.
+        
+        Returns:
+        	str: The formatted row.
+        """
         return "  ".join(str(v).ljust(w) for v, w in zip(vals, widths))
 
     print()
@@ -140,6 +193,12 @@ def _print_table(rows: list[tuple]) -> None:
 
 
 def main() -> int:
+    """
+    Run the migration showcase in dry-run or live mode and print a summary table.
+    
+    Returns:
+        int: `0` if all migration sources succeed or are skipped, `1` if argument validation fails or any source fails.
+    """
     parser = argparse.ArgumentParser(description="Showcase migration runner")
     parser.add_argument("--agent", default=None, help="Target agent ID (omit for dry-run)")
     parser.add_argument("--live", action="store_true", help="Run live migration (requires --agent and MOORCHEH_API_KEY)")

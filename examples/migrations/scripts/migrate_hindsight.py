@@ -17,6 +17,12 @@ import sys
 
 
 def main() -> int:
+    """
+    Run the Hindsight-to-Memanto migration command using command-line and environment settings.
+    
+    Returns:
+    	int: The migration command's exit code, or `1` when the Hindsight API key is missing.
+    """
     parser = argparse.ArgumentParser(description="Migrate Hindsight memories to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

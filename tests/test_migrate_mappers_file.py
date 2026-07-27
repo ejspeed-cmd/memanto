@@ -4,6 +4,17 @@ from memanto.cli.migrate.mappers import map_langgraph, map_notion, map_obsidian
 
 
 def _lg_item(key, value, namespace=None):
+    """
+    Build a LangGraph export item from a key, value, and optional namespace.
+    
+    Parameters:
+    	key: The item's key.
+    	value: The item's value.
+    	namespace: An optional namespace associated with the item.
+    
+    Returns:
+    	dict: A dictionary containing the key and value, with the namespace included when provided.
+    """
     item = {"key": key, "value": value}
     if namespace is not None:
         item["namespace"] = namespace
@@ -11,6 +22,19 @@ def _lg_item(key, value, namespace=None):
 
 
 def _md_entry(body="", title="", stem="", tags=None, created_at=None):
+    """
+    Build a Markdown-style export entry with optional metadata.
+    
+    Parameters:
+    	body (str): Entry content.
+    	title (str): Optional entry title.
+    	stem (str): Filename stem used to identify the entry.
+    	tags (list): Optional entry tags.
+    	created_at: Optional creation timestamp.
+    
+    Returns:
+    	dict: An entry containing the body, filename stem, and tags, with title and creation timestamp when provided.
+    """
     e = {"body": body, "filename_stem": stem, "tags": tags or []}
     if title:
         e["title"] = title

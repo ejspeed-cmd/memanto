@@ -410,15 +410,10 @@ def map_supermemory(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_okf(export: dict[str, Any]) -> list[dict[str, Any]]:
-    """Map OKF bundle entries (from ``okf_loader.load_okf_bundle``) to Memanto
-    memory payloads.
-
-    OKF's ``type`` is free-form domain vocabulary, so it can't map onto
-    Memanto's fixed types. We use it only when it happens to equal a Memanto
-    type (or when a Memanto ``x_memanto.type`` round-trip value is present);
-    otherwise we leave ``type=None`` for auto-classification and record the
-    original OKF type in the footer. Everything with no schema slot (OKF type,
-    resource, links, unknown frontmatter keys) goes into ``[Supporting data]``.
+    """
+    Map OKF bundle entries to Memanto memory payloads.
+    
+    Entries without usable body, description, or title content are skipped. Compatible OKF type values are mapped to Memanto types; other provider metadata is preserved as supporting data.
     """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
@@ -493,6 +488,15 @@ def map_okf(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_claude(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Map human-authored Claude conversation messages to Memanto memory payloads.
+    
+    Parameters:
+    	export (dict[str, Any]): Claude export data containing conversations and chat messages.
+    
+    Returns:
+    	list[dict[str, Any]]: Memory payloads created from usable human messages.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -552,6 +556,14 @@ def map_claude(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map user messages from a Gemini export to Memanto memory payloads.
+    
+    Parameters:
+    	export (dict[str, Any]): Gemini export data containing conversations and messages.
+    
+    Returns:
+    	list[dict[str, Any]]: Memory payloads created from non-empty user messages.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -605,6 +617,14 @@ def map_gemini(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert user messages from a ChatGPT export into Memanto memory payloads.
+    
+    Parameters:
+        export (dict[str, Any]): ChatGPT export data containing conversation mappings.
+    
+    Returns:
+        list[dict[str, Any]]: Memory payloads created from user messages, including conversation and node metadata.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -679,6 +699,15 @@ def map_chatgpt(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_zep(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Convert Zep memory edges into Memanto memory payloads.
+    
+    Parameters:
+    	export (dict[str, Any]): Zep export containing memory edges under the `"memories"` key.
+    
+    Returns:
+    	list[dict[str, Any]]: Memanto memory payloads with fact type, confidence, source metadata, and parsed timestamps.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -726,6 +755,15 @@ _HINDSIGHT_TYPE_MAP: dict[str, str] = {
 
 
 def _hindsight_type(fact_type: str | None) -> str | None:
+    """
+    Map a Hindsight fact type to a valid memory type.
+    
+    Parameters:
+    	fact_type (str | None): The Hindsight fact type label.
+    
+    Returns:
+    	str | None: The corresponding memory type, or `None` when the label is empty or unsupported.
+    """
     if not fact_type:
         return None
     t = fact_type.strip().lower()
@@ -733,6 +771,15 @@ def _hindsight_type(fact_type: str | None) -> str | None:
 
 
 def map_hindsight(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Map Hindsight memories to Memanto memory payloads.
+    
+    Parameters:
+        export (dict[str, Any]): Hindsight export containing memory records.
+    
+    Returns:
+        list[dict[str, Any]]: Memanto-compatible memory payloads for records with usable content.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -772,6 +819,15 @@ def map_hindsight(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_langgraph(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Convert LangGraph items into Memanto memory payloads.
+    
+    Parameters:
+    	export (dict[str, Any]): LangGraph export containing memory items.
+    
+    Returns:
+    	list[dict[str, Any]]: Memory payloads for items with usable content.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -829,6 +885,18 @@ def _map_markdown_entry(
     memory_type: str,
     migrated_at: Any,
 ) -> dict[str, Any] | None:
+    """
+    Build a Memanto memory payload from a markdown-style export entry.
+    
+    Parameters:
+        entry (dict[str, Any]): Exported entry containing the body, title, filename stem, and tags.
+        source (str): Provider identifier for the memory payload.
+        memory_type (str): Memory type assigned to the payload.
+        migrated_at (Any): Timestamp assigned to the migration update field.
+    
+    Returns:
+        dict[str, Any] | None: A memory payload, or `None` when the entry has no usable title or body.
+    """
     body = (entry.get("body") or "").strip()
     explicit_title = (entry.get("title") or "").strip()
     stem = (entry.get("filename_stem") or "").strip()
@@ -858,6 +926,16 @@ def _map_markdown_entry(
 
 
 def map_notion(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Map Notion markdown entries to Memanto memory payloads.
+    
+    Parameters:
+        export (dict[str, Any]): Notion export containing memory entries under the
+            ``memories`` key.
+    
+    Returns:
+        list[dict[str, Any]]: Memanto memory payloads for valid Notion entries.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -873,6 +951,16 @@ def map_notion(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_obsidian(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Convert Obsidian memory entries into Memanto memory payloads.
+    
+    Parameters:
+        export (dict[str, Any]): Obsidian export containing memory entries under
+            the ``memories`` key.
+    
+    Returns:
+        list[dict[str, Any]]: Memanto memory payloads for valid Obsidian entries.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 
@@ -888,6 +976,15 @@ def map_obsidian(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def map_chroma(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Convert Chroma memories into Memanto memory payloads.
+    
+    Parameters:
+    	export (dict[str, Any]): Chroma export containing memory documents and optional metadata.
+    
+    Returns:
+    	list[dict[str, Any]]: Memanto memory payloads for documents with usable content.
+    """
     rows: list[dict[str, Any]] = []
     migrated_at = _now_utc()
 

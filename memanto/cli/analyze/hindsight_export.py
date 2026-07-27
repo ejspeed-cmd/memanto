@@ -30,6 +30,15 @@ REQUEST_TIMEOUT_S = 60.0
 
 
 def _client(api_key: str, base_url: str) -> httpx.Client:
+    """Create an HTTP client configured for the Hindsight API.
+    
+    Parameters:
+    	api_key (str): API key used for authorization.
+    	base_url (str): Base URL for API requests.
+    
+    Returns:
+    	httpx.Client: Configured HTTP client.
+    """
     return httpx.Client(
         base_url=base_url,
         timeout=REQUEST_TIMEOUT_S,
@@ -41,6 +50,20 @@ def _client(api_key: str, base_url: str) -> httpx.Client:
 
 
 def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = None) -> Any:
+    """
+    Retrieve JSON data from an API endpoint.
+    
+    Parameters:
+    	client (httpx.Client): HTTP client used to make the request.
+    	path (str): Endpoint path to request.
+    	params (dict[str, Any] | None): Optional query parameters.
+    
+    Returns:
+    	Any: Decoded JSON response, or an empty dictionary when the response has no content.
+    
+    Raises:
+    	RuntimeError: If the response status code is 400 or greater.
+    """
     resp = client.get(path, params=params or {})
     if resp.status_code >= 400:
         raise RuntimeError(f"GET {path} -> {resp.status_code}: {resp.text[:500]}")
@@ -48,11 +71,29 @@ def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = N
 
 
 def list_all_banks(client: httpx.Client) -> list[dict[str, Any]]:
+    """
+    List all memory banks available in the default Hindsight environment.
+    
+    Returns:
+    	list[dict[str, Any]]: The available memory banks.
+    """
     data = _get_json(client, "/v1/default/banks")
     return data.get("banks") or []
 
 
 def list_bank_memories(client: httpx.Client, bank_id: str) -> list[dict[str, Any]]:
+    """
+    Collects all memories for a bank across paginated API responses.
+    
+    Parameters:
+        bank_id (str): Identifier of the bank whose memories should be collected.
+    
+    Returns:
+        list[dict[str, Any]]: The bank's memory records.
+    
+    Raises:
+        RuntimeError: If the pagination limit is reached before all memories are collected.
+    """
     memories: list[dict[str, Any]] = []
     offset = 0
     MAX_PAGES = 500
@@ -89,11 +130,17 @@ def run_hindsight_export(
     on_progress: Callable[[str], None] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """
-    Export all Hindsight memories across all banks (or a specific bank).
+    Export Hindsight memories for all banks or a selected bank to a JSON file.
 
-    Returns the written file path and the export dict. The ``memories`` list
-    contains raw memory unit objects; ``map_hindsight`` reads the ``text``
-    and ``fact_type`` fields from each.
+    Parameters:
+        api_key (str): API key used to authenticate with Hindsight.
+        dest_dir (Path): Directory where the export file is written.
+        base_url (str): Base URL for the Hindsight API.
+        bank_id (str | None): Identifier of a specific bank to export. If omitted, all banks are exported.
+        on_progress (Callable[[str], None] | None): Optional callback that receives progress messages.
+
+    Returns:
+        tuple[Path, dict[str, Any]]: The written file path and the complete export data.
     """
     with _client(api_key, base_url) as client:
         if bank_id:

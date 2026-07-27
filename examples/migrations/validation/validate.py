@@ -32,6 +32,15 @@ MIN_SCORE_TO_PASS = 10  # out of 15
 
 
 def _load_golden(path: Path) -> list[dict]:
+    """
+    Load golden question-and-answer data from a JSON file.
+    
+    Parameters:
+        path (Path): Path to the JSON file containing the golden data.
+    
+    Returns:
+        list[dict]: Parsed golden question-and-answer records.
+    """
     with open(path) as f:
         return json.load(f)
 
@@ -39,6 +48,11 @@ def _load_golden(path: Path) -> list[dict]:
 def _build_judge():
     # validate.py lives at examples/migrations/ai-conversations/validation/
     # evaluator.py lives at examples/benchmarks/memanto-vs-mem0/
+    """Create an LLM judge configured with the validation evaluator model.
+    
+    Returns:
+        LLMJudge: The configured language model judge.
+    """
     evaluator_path = _HERE.parent.parent.parent / "benchmarks" / "memanto-vs-mem0" / "evaluator.py"
     import importlib.util
     spec = importlib.util.spec_from_file_location("evaluator", evaluator_path)
@@ -49,6 +63,11 @@ def _build_judge():
 
 
 def _print_table(results: list[dict]) -> None:
+    """Print validation results in a formatted table.
+    
+    Parameters:
+        results (list[dict]): Validation results to display.
+    """
     cols = ["id", "source", "score", "pass", "accuracy", "staleness", "precision"]
     widths = [8, 10, 7, 5, 10, 10, 10]
     header = "  ".join(c.ljust(w) for c, w in zip(cols, widths))
@@ -69,6 +88,16 @@ def _print_table(results: list[dict]) -> None:
 
 
 def run(agent_id: str, golden_path: Path) -> int:
+    """
+    Run round-trip recall validation for an agent against a golden question-and-answer set.
+    
+    Parameters:
+        agent_id (str): Identifier of the agent to activate and evaluate.
+        golden_path (Path): Path to the golden question-and-answer JSON file.
+    
+    Returns:
+        int: 0 if the validation meets the pass threshold, otherwise 1.
+    """
     api_key = os.environ.get("MOORCHEH_API_KEY", "").strip()
     if not api_key:
         print("ERROR: MOORCHEH_API_KEY is not set", file=sys.stderr)
@@ -148,6 +177,7 @@ def run(agent_id: str, golden_path: Path) -> int:
 
 
 def main() -> None:
+    """Parse command-line arguments and run recall validation for the selected agent."""
     parser = argparse.ArgumentParser(description="Recall validation for migration showcase")
     parser.add_argument("--agent", required=True, help="Agent ID to query")
     parser.add_argument(

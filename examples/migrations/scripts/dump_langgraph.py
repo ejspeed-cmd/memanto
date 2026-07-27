@@ -19,6 +19,15 @@ import sys
 
 
 def _get_store():
+    """
+    Create the configured LangGraph store.
+    
+    Returns:
+        tuple: The store instance and a boolean indicating whether Postgres mode is enabled.
+    
+    Raises:
+        SystemExit: If the Postgres dependency is unavailable or the configured store cannot be initialized.
+    """
     uri = os.environ.get("LANGGRAPH_POSTGRES_URI")
     if uri:
         try:
@@ -36,6 +45,16 @@ def _get_store():
 
 
 async def _dump(store, postgres: bool) -> list[dict]:
+    """
+    Export all items from a LangGraph store.
+    
+    Parameters:
+    	store: Store providing namespace listing and item search operations.
+    	postgres (bool): Whether the store uses the Postgres backend.
+    
+    Returns:
+    	list[dict]: Exported items with namespace, key, value, and timestamp fields.
+    """
     items = []
     seen: set[tuple] = set()
     ns_list: list = []
@@ -83,6 +102,12 @@ async def _dump(store, postgres: bool) -> list[dict]:
 
 
 async def _seed_demo(store) -> None:
+    """
+    Populate the store with sample user and project entries for export demonstrations.
+    
+    Parameters:
+    	store: Storage backend that accepts asynchronous item insertion.
+    """
     await store.aput(("user", "alice", "memories"), "pref-editor", {"content": "Alice uses VSCode with dark mode as her primary editor."})
     await store.aput(("user", "alice", "memories"), "pref-lang", {"content": "Alice prefers Python and FastAPI over JavaScript."})
     await store.aput(("user", "alice", "facts"), "location", {"content": "Alice is based in Berlin, Germany."})
@@ -90,6 +115,12 @@ async def _seed_demo(store) -> None:
 
 
 async def main(output: str) -> None:
+    """
+    Export store contents to a JSON file.
+    
+    Parameters:
+        output (str): Path to the output JSON file.
+    """
     store, postgres = _get_store()
 
     if not postgres:

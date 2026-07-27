@@ -16,6 +16,12 @@ import sys
 
 
 def main() -> int:
+    """Run the Supermemory-to-Memanto migration command.
+    
+    Returns:
+        int: The migration command's exit status, or 1 when no Supermemory API
+            key is configured.
+    """
     parser = argparse.ArgumentParser(description="Migrate Supermemory memories to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

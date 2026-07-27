@@ -20,6 +20,12 @@ ZIP_PATH = str(Path(__file__).parent.parent / "sample_data" / "gemini_export.zip
 
 
 def main() -> int:
+    """
+    Run the Memanto migration for a Gemini Takeout ZIP export.
+    
+    Returns:
+        int: The exit code from the migration command, or `1` if the configured ZIP file is missing.
+    """
     parser = argparse.ArgumentParser(description="Migrate Gemini Takeout export to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

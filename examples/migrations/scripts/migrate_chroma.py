@@ -18,6 +18,12 @@ import sys
 
 
 def main() -> int:
+    """
+    Run the Chroma collection migration command using CLI arguments and environment configuration.
+    
+    Returns:
+        int: The migration command's exit code, or 1 when no collection is configured.
+    """
     parser = argparse.ArgumentParser(description="Migrate a Chroma collection to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)
