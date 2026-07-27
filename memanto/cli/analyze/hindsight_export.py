@@ -131,12 +131,14 @@ def run_hindsight_export(
 ) -> tuple[Path, dict[str, Any]]:
     """
     Export Hindsight memories for all banks or a selected bank to a JSON file.
-    
+
     Parameters:
+        api_key (str): API key used to authenticate with Hindsight.
         dest_dir (Path): Directory where the export file is written.
+        base_url (str): Base URL for the Hindsight API.
         bank_id (str | None): Identifier of a specific bank to export. If omitted, all banks are exported.
         on_progress (Callable[[str], None] | None): Optional callback that receives progress messages.
-    
+
     Returns:
         tuple[Path, dict[str, Any]]: The written file path and the complete export data.
     """
