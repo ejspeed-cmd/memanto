@@ -501,7 +501,7 @@ class SdkClient:
 
         # Log to local session Markdown summary only after a durable write.
         if self.session_token and is_successful_write_result(result):
-            session_id = "unknown"
+            session_id = self._cached_session.session_id if self._cached_session else "unknown"
             self._get_session_service().log_memory_to_session_summary(
                 agent_id=agent_id,
                 session_id=session_id,
@@ -601,7 +601,7 @@ class SdkClient:
 
         # Log each memory to local session Markdown summary
         if self.session_token:
-            session_id = "unknown"
+            session_id = self._cached_session.session_id if self._cached_session else "unknown"
             session_svc = self._get_session_service()
 
             # Extract per-memory IDs from the batch result
