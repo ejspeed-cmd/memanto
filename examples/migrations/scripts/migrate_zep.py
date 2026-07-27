@@ -16,6 +16,12 @@ import sys
 
 
 def main() -> int:
+    """
+    Run the Zep Cloud memory migration through Memanto.
+    
+    Returns:
+        int: The subprocess exit code, or `1` when no Zep API key is provided.
+    """
     parser = argparse.ArgumentParser(description="Migrate Zep Cloud memories to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

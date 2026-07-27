@@ -99,7 +99,16 @@ def _safe_extract(zf: Any, dest: str) -> None:
 
 
 def _parse_markdown_file(md_file: Path, raw: str) -> dict | None:
-    """Parse a Markdown file with optional YAML frontmatter into a memory dict."""
+    """
+    Parse a Markdown file into a memory record, including supported YAML frontmatter.
+    
+    Parameters:
+    	md_file (Path): Markdown file whose stem is included in the record.
+    	raw (str): Raw Markdown content, optionally beginning with YAML frontmatter.
+    
+    Returns:
+    	dict | None: A memory record containing the title, body, tags, creation time, and filename stem; `None` if the file has no body or title.
+    """
     import yaml
     frontmatter: dict = {}
     body = raw
@@ -163,7 +172,16 @@ def _resolve_provider_key(
     provider: str,
     api_key: str | None,
 ) -> str:
-    """Prompt-or-fetch the provider API key the same way analyze used to."""
+    """
+    Resolve and persist an API key for a supported provider.
+    
+    Parameters:
+        provider (str): Provider whose API key should be resolved.
+        api_key (str | None): Optional API key supplied by the caller.
+    
+    Returns:
+        str: The resolved provider API key.
+    """
     getters = {
         "mem0": (
             config_manager.get_mem0_api_key,
@@ -295,6 +313,18 @@ def _render_savings_report(
     export_path: Path,
     run_dir: Path,
 ) -> Path:
+    """
+    Generate a migration savings report for a provider export.
+    
+    Parameters:
+        provider (str): Provider key used to select report configuration.
+        export (dict[str, Any]): Export data used to calculate report metrics.
+        export_path (Path): Path to the source export.
+        run_dir (Path): Directory where the report is written.
+    
+    Returns:
+        Path: Path to the generated migration report.
+    """
     bundle = _PROVIDER_BUNDLES[provider]
     metrics = bundle["metrics"](export)
     narrative, llm_model, llm_method = _generate_narrative(
@@ -320,6 +350,17 @@ def _render_simple_report(
     summary: Any,
     run_dir: Path,
 ) -> Path:
+    """
+    Write a Markdown migration report containing record counts and memory type breakdown.
+    
+    Parameters:
+        provider (str): Provider name displayed in the report title.
+        summary (Any): Migration summary containing source, mapped, skipped, and type-count values.
+        run_dir (Path): Directory where the report is written.
+    
+    Returns:
+        Path: Path to the generated migration report.
+    """
     type_lines = "\n".join(
         f"- **{k}**: {v}" for k, v in sorted(summary.type_counts.items())
     ) or "- (none)"
@@ -342,6 +383,17 @@ def _start_run(
     label: str,
     dry_run: bool,
 ) -> tuple[Path, Callable[[str], None]]:
+    """
+    Create a timestamped migration run directory and a progress-reporting callback.
+    
+    Parameters:
+        provider (str): Provider identifier used to select the migration directory.
+        label (str): Human-readable provider label displayed in the run banner.
+        dry_run (bool): Whether the run should be identified as a dry run.
+    
+    Returns:
+        tuple[Path, Callable[[str], None]]: The run directory and a callback that displays progress messages.
+    """
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     run_dir = config_manager.get_migrate_dir(provider) / stamp
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -354,6 +406,7 @@ def _start_run(
     )
 
     def progress(msg: str) -> None:
+        """Display a migration progress message in the console."""
         console.print(f"  [{BRIGHT}]…[/{BRIGHT}] {msg}")
 
     return run_dir, progress
@@ -368,6 +421,17 @@ def _render_summary(
     *,
     report_path: Path | None = None,
 ) -> None:
+    """
+    Display a migration summary panel and write the mapped-record preview.
+    
+    Parameters:
+    	summary (Any): Migration counts, type breakdown, and errors to display.
+    	rows (list[dict[str, Any]]): Mapped records to write to the run preview.
+    	run_dir (Path): Directory for migration outputs.
+    	target_agent (str | None): Agent targeted by the migration.
+    	dry_run (bool): Whether the migration performed no writes.
+    	report_path (Path | None): Optional path to the generated savings report.
+    """
     preview_path = write_preview(rows, run_dir / "mapped_preview.json")
     type_lines = (
         ", ".join(f"{k}: {v}" for k, v in sorted(summary.type_counts.items())) or "—"
@@ -411,6 +475,15 @@ def _render_summary(
 
 
 def _resolve_target_agent(agent: str | None) -> str:
+    """
+    Resolve the target agent for a migration.
+    
+    Parameters:
+    	agent (str | None): Optional agent identifier to use instead of the active agent.
+    
+    Returns:
+    	str: The provided agent identifier or the active agent identifier.
+    """
     if agent and agent.strip():
         return agent.strip()
     active_agent_id, active_session_token = config_manager.get_active_session()
@@ -426,6 +499,15 @@ def _resolve_target_agent(agent: str | None) -> str:
 
 
 def _load_export_or_exit(file: Path) -> dict[str, Any]:
+    """
+    Load a migration export from a file and terminate with an error if it cannot be read or is not a JSON object.
+    
+    Parameters:
+        file (Path): Path to the export file.
+    
+    Returns:
+        dict[str, Any]: The decoded export data.
+    """
     try:
         data = load_export(file)
     except (OSError, ValueError) as exc:
@@ -443,7 +525,19 @@ def _load_or_export(
     run_dir: Path,
     progress: Callable[[str], None],
 ) -> tuple[Path, dict[str, Any]]:
-    """Either load an existing export JSON or run the live exporter."""
+    """
+    Load an existing export file or create an export using the provider's live exporter.
+    
+    Parameters:
+        provider (str): Provider whose export configuration and exporter should be used.
+        file (Path | None): Existing export file to load, or None to perform a live export.
+        api_key (str | None): Provider API key used for a live export.
+        run_dir (Path): Directory where the live exporter stores its output.
+        progress (Callable[[str], None]): Callback for reporting export progress.
+    
+    Returns:
+        tuple[Path, dict[str, Any]]: The export file path and decoded export data.
+    """
     bundle = _PROVIDER_BUNDLES[provider]
     if file is not None:
         progress(f"Loading export from {file}")
@@ -470,7 +564,17 @@ def _run_migrate_flow(
     dry_run: bool,
     report: bool,
 ) -> None:
-    """Shared entry point for every migrate subcommand."""
+    """
+    Run a provider migration from a saved export or live provider data.
+    
+    Parameters:
+        provider (str): Provider key identifying the migration configuration.
+        api_key (str | None): Optional provider API key used for live exports.
+        file (Path | None): Optional export file to load instead of performing a live export.
+        agent (str | None): Target Memanto agent for writes.
+        dry_run (bool): Whether to preview the migration without writing memories.
+        report (bool): Whether to generate a savings report for a completed migration.
+    """
     bundle = _PROVIDER_BUNDLES[provider]
     label = bundle["label"]
 
@@ -687,16 +791,13 @@ def migrate_okf(
         help="Preview the mapping without writing.",
     ),
 ):
-    """Import an OKF (Open Knowledge Format) bundle into the active (or selected) agent.
-
-    Unlike the provider migrations, OKF is a local file bundle — no API key and
-    no savings report. Fields that don't map onto Memanto's schema are preserved
-    in a ``[Supporting data]`` footer, and OKF's free-form ``type`` is
-    auto-classified.
-
-    Examples:
-        memanto migrate okf ./okf-bundle --dry-run
-        memanto migrate okf ./okf-bundle --agent my-agent
+    """
+    Import an OKF bundle or Markdown file into a Memanto agent.
+    
+    Parameters:
+        path (Path): Path to an OKF bundle directory or a single Markdown file.
+        agent (str | None): Target Memanto agent ID; defaults to the active agent.
+        dry_run (bool): Preview the mapping without writing imported memories.
     """
     if not path.exists():
         _error(
@@ -813,8 +914,16 @@ def migrate_conversations(
         help="Also write the savings report on a real run.",
     ),
 ):
-    """Import ChatGPT, Claude or Gemini conversation exports into Memanto.
-
+    """
+    Import ChatGPT, Claude, or Gemini conversation exports into Memanto.
+    
+    Parameters:
+        path (Path): Path to the conversation export ZIP file.
+        source (str): Export source: ``chatgpt``, ``claude``, or ``gemini``.
+        agent (str | None): Target Memanto agent ID; defaults to the active agent.
+        dry_run (bool): Preview the mapping without writing memories.
+        report (bool): Write a savings report for a real migration.
+    
     Examples:
         memanto migrate conversations chatgpt_export.zip --source chatgpt --dry-run
         memanto migrate conversations claude_export.zip --source claude --agent my-agent
@@ -892,7 +1001,15 @@ def migrate_conversations(
 
 
 def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
-    """Normalize a Google Takeout Gemini ZIP into {memories: [...]}."""
+    """
+    Normalize Google Takeout Gemini activity or fallback JSON files into a memory export.
+    
+    Parameters:
+    	tmp_path (Path): Root directory containing the extracted Google Takeout files.
+    
+    Returns:
+    	dict[str, Any]: An export dictionary containing the discovered memories under the `"memories"` key.
+    """
     import json
     import re
 
@@ -952,7 +1069,15 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
 
 
 def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
-    """Parse a Gemini HTML activity log into {memories: [...]}."""
+    """
+    Parse a Gemini HTML activity log into memory records.
+    
+    Parameters:
+        html_path (Path): Path to the Gemini activity HTML file.
+    
+    Returns:
+        dict[str, Any]: A dictionary containing parsed memories with user prompts and available creation timestamps.
+    """
     import html.parser
     import re
 
@@ -1006,6 +1131,7 @@ def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
                 self._buf.append(data)
 
         def _flush_entry(self) -> None:
+            """Add the current activity entry to the parsed results when it contains a prompt."""
             text = " ".join(self._buf).strip()
             normalized = text.replace("\xa0", " ")
             if not normalized:
@@ -1039,6 +1165,7 @@ def _parse_gemini_html(html_path: Path) -> dict[str, Any]:
             )
 
         def close(self) -> None:
+            """Close the parser and flush any pending activity entry."""
             super().close()
             if self._in_outer:
                 self._flush_entry()
@@ -1194,7 +1321,17 @@ def migrate_hindsight(
         help="Also write the savings report on a real run.",
     ),
 ):
-    """Migrate a Hindsight memory bank into the active (or selected) Memanto agent."""
+    """Migrate a Hindsight memory bank into the active or selected Memanto agent.
+    
+    Parameters:
+    	api_key (str | None): Hindsight API key used for live exports.
+    	base_url (str | None): Base URL of the Hindsight service.
+    	bank_id (str | None): Hindsight bank to export; when omitted, exports all banks.
+    	file (Path | None): Existing Hindsight export file to import instead of performing a live export.
+    	agent (str | None): Target Memanto agent identifier.
+    	dry_run (bool): Preview the mapping without writing memories.
+    	report (bool): Write a savings report for a completed migration.
+    """
     run_dir, progress = _start_run("hindsight", "Hindsight", dry_run)
     target_agent = None if dry_run else _resolve_target_agent(agent)
 
@@ -1247,11 +1384,13 @@ def migrate_notion(
         help="Preview the mapping without writing.",
     ),
 ):
-    """Migrate a Notion export ZIP into the active (or selected) Memanto agent.
-
-    Examples:
-        memanto migrate notion --file notion_export.zip --dry-run
-        memanto migrate notion --file notion_export.zip --agent my-agent
+    """
+    Migrate a Notion Markdown export into a Memanto agent.
+    
+    Parameters:
+        file (Path): Path to the Notion export ZIP file.
+        agent (str | None): Target Memanto agent ID, or the active agent when omitted.
+        dry_run (bool): Preview the mapping without writing to Memanto.
     """
     import tempfile
     import zipfile
@@ -1435,11 +1574,15 @@ def migrate_chroma(
         help="Preview the mapping without writing.",
     ),
 ):
-    """Migrate a Chroma collection into the active (or selected) Memanto agent.
-
-    Examples:
-        memanto migrate chroma --collection my_docs --dry-run
-        memanto migrate chroma --collection my_docs --host 192.168.1.10 --port 8000 --agent my-agent
+    """
+    Migrate documents and metadata from a Chroma collection into a Memanto agent.
+    
+    Parameters:
+    	collection (str | None): Chroma collection name.
+    	host (str): Chroma server host.
+    	port (int): Chroma server port.
+    	agent (str | None): Target Memanto agent identifier; defaults to the active agent.
+    	dry_run (bool): Preview the mapping without writing records.
     """
     try:
         import chromadb

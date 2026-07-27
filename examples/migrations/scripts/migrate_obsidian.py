@@ -20,6 +20,11 @@ VAULT_PATH = "/path/to/your/obsidian/vault"
 
 
 def main() -> int:
+    """Migrate an Obsidian vault to Memanto using the command-line arguments.
+    
+    Returns:
+    	int: The exit code from the migration command, or `1` if the vault directory is invalid.
+    """
     parser = argparse.ArgumentParser(description="Migrate Obsidian vault to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

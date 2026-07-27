@@ -41,6 +41,12 @@ API_SOURCE_KEY = "api_source_select"
 
 @st.cache_resource
 def _load_memanto():
+    """
+    Load the Memanto migration components required by the application.
+    
+    Returns:
+    	tuple: The mapper registry, migration runner, and SDK client class.
+    """
     try:
         from memanto.cli.migrate.mappers import MAPPERS
         from memanto.cli.migrate.runner import run_migration
@@ -56,7 +62,15 @@ def _load_memanto():
 # ---------------------------------------------------------------------------
 
 def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
-    """Normalize a Google Takeout Gemini ZIP into {memories: [...]}."""
+    """
+    Normalize a Google Takeout Gemini archive into a memory export.
+    
+    Parameters:
+    	tmp_path (Path): Directory containing the extracted archive files.
+    
+    Returns:
+    	dict[str, Any]: A dictionary with a `memories` list containing normalized conversation records.
+    """
     import re
 
     json_hits = list(tmp_path.rglob("My Activity.json"))
@@ -103,6 +117,19 @@ def _parse_gemini_archive(tmp_path: Path) -> dict[str, Any]:
 
 
 def _load_export_from_bytes(file_bytes: bytes, source: str) -> dict[str, Any]:
+    """
+    Load a provider export ZIP and normalize its contents into a migration-ready structure.
+    
+    Parameters:
+        file_bytes (bytes): The uploaded ZIP archive contents.
+        source (str): The provider identifier used to select the archive format.
+    
+    Returns:
+        dict[str, Any]: The normalized export data.
+    
+    Raises:
+        SystemExit: Stops the Streamlit app when the archive is invalid, contains unsafe paths, or lacks the required conversation file.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         try:
@@ -132,6 +159,17 @@ def _load_export_from_bytes(file_bytes: bytes, source: str) -> dict[str, Any]:
 
 
 def _fetch_export(source: str, provider_key: str, **kwargs) -> dict | None:
+    """
+    Fetch and cache an export for an API-based provider.
+    
+    Parameters:
+        source (str): Provider identifier used to select the export handler.
+        provider_key (str): Provider API key.
+        **kwargs: Optional provider-specific settings, including the Hindsight base URL.
+    
+    Returns:
+        dict | None: The fetched export, or `None` if fetching fails.
+    """
     cache_key = f"export_{source}"
     if st.session_state.get(cache_key):
         return st.session_state[cache_key]
@@ -165,6 +203,16 @@ def _fetch_export(source: str, provider_key: str, **kwargs) -> dict | None:
 
 
 def _run_dry_run(source: str, export: dict[str, Any]) -> tuple[list[dict], dict]:
+    """
+    Generate a preview of the memories mapped from an export without performing migration.
+    
+    Parameters:
+    	source (str): Provider identifier for the export.
+    	export (dict[str, Any]): Normalized provider export to process.
+    
+    Returns:
+    	tuple[list[dict], dict]: Mapped memory rows and a migration summary.
+    """
     MAPPERS, run_migration, _ = _load_memanto()
     summary, rows = run_migration(
         provider=source,
@@ -178,6 +226,18 @@ def _run_dry_run(source: str, export: dict[str, Any]) -> tuple[list[dict], dict]
 
 
 def _do_migrate(source: str, export: dict[str, Any], agent_id: str, api_key: str) -> dict:
+    """
+    Run a provider export migration for an agent namespace.
+    
+    Parameters:
+        source (str): Provider identifier for the export.
+        export (dict[str, Any]): Normalized provider export to migrate.
+        agent_id (str): Target Memanto agent namespace identifier.
+        api_key (str): API key used to authenticate the migration client.
+    
+    Returns:
+        dict: Migration summary represented as a dictionary.
+    """
     _, run_migration, SdkClient = _load_memanto()
     client = SdkClient(api_key=api_key)
     summary, _ = run_migration(
@@ -229,6 +289,13 @@ API_KEY_PROVIDERS = {
 
 
 def _render_api_key_panel(source: str, agent_id: str) -> None:
+    """
+    Render API-key-based export controls, migration actions, and their results.
+    
+    Parameters:
+        source (str): Provider identifier used to select the required API key and export workflow.
+        agent_id (str): Target namespace identifier for migration.
+    """
     env_var = API_KEY_PROVIDERS[source]
     key = st.text_input(env_var, type="password", value=os.environ.get(env_var, ""))
 
@@ -321,6 +388,14 @@ def _render_api_key_panel(source: str, agent_id: str) -> None:
                 st.caption(f"...and {len(rows) - 5} more memories")
 
 def _svg_data_uri(path: str) -> str:
+    """Convert an SVG file to a base64-encoded data URI.
+    
+    Parameters:
+    	path (str): Path to the SVG file.
+    
+    Returns:
+    	str: Data URI containing the encoded SVG content.
+    """
     data = Path(path).read_bytes()
     b64 = base64.b64encode(data).decode()
     return f"data:image/svg+xml;base64,{b64}"
@@ -333,6 +408,14 @@ EXPORT_INSTRUCTIONS = {
 
 
 def _fetch_agents(api_key: str) -> list[str]:
+    """Retrieve the available Memanto agent namespace identifiers.
+    
+    Parameters:
+    	api_key (str): API key used to access the namespace list.
+    
+    Returns:
+    	list[str]: Agent identifiers extracted from namespaces prefixed with ``memanto_agent_``; an empty list if retrieval fails.
+    """
     try:
         from moorcheh_sdk import MoorchehClient
         client = MoorchehClient(api_key=api_key)
@@ -349,6 +432,16 @@ def _fetch_agents(api_key: str) -> list[str]:
 
 
 def _create_agent(api_key: str, agent_id: str) -> tuple[bool, str]:
+    """
+    Create a Memanto namespace for the specified agent identifier.
+    
+    Parameters:
+    	api_key (str): API key used to access Memanto.
+    	agent_id (str): Identifier for the namespace to create.
+    
+    Returns:
+    	tuple[bool, str]: A success flag and a message describing whether the namespace was created, already existed, or could not be created.
+    """
     try:
         from memanto.app.utils.errors import AgentAlreadyExistsError
     except ImportError:
@@ -368,6 +461,12 @@ def _create_agent(api_key: str, agent_id: str) -> tuple[bool, str]:
 
 
 def sidebar():
+    """
+    Render the sidebar configuration and return the selected API key and namespace.
+    
+    Returns:
+        tuple[str, str]: The Moorcheh API key and selected namespace identifier.
+    """
     with st.sidebar:
         st.image("https://raw.githubusercontent.com/moorcheh-ai/memanto/main/assets/memanto-logo.svg", width=140)
         st.markdown("## Memanto Migration")
@@ -454,6 +553,11 @@ def sidebar():
 
 
 def main():
+    """
+    Run the Streamlit application for selecting an export provider, previewing mapped memories, and migrating them into Memanto.
+    
+    The interface supports ZIP-based conversation exports and API-key-based providers, and displays migration results when available.
+    """
     api_key, agent_id = sidebar()
 
     st.title("🧠 Memanto Migration")

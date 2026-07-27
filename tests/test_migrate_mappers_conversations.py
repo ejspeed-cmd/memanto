@@ -32,6 +32,17 @@ def _chatgpt_export(*user_texts, conv_id="conv-1", title="Test Conv"):
 
 
 def _claude_export(*texts, conv_id="c-1", name="My Conv"):
+    """
+    Build a Claude-style export containing a single conversation with human messages.
+    
+    Parameters:
+        texts (str): Message texts to include in the conversation.
+        conv_id (str): Identifier for the conversation.
+        name (str): Conversation name.
+    
+    Returns:
+        dict: An export containing the conversation and its messages.
+    """
     messages = [
         {
             "uuid": f"msg-{i}",
@@ -45,6 +56,15 @@ def _claude_export(*texts, conv_id="c-1", name="My Conv"):
 
 
 def _gemini_export(*texts, conv_id="g-1"):
+    """Build a Gemini-style export containing user messages for one conversation.
+    
+    Parameters:
+        texts: Message text values to include in the conversation.
+        conv_id: Identifier for the conversation.
+    
+    Returns:
+        A dictionary representing the Gemini export payload.
+    """
     return {
         "memories": [
             {

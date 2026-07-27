@@ -20,6 +20,12 @@ ZIP_PATH = str(Path(__file__).parent.parent / "sample_data" / "chatgpt_export.zi
 
 
 def main() -> int:
+    """
+    Run the Memanto migration for the configured ChatGPT export.
+    
+    Returns:
+    	int: The Memanto command's exit code, or 1 if the configured ZIP file does not exist.
+    """
     parser = argparse.ArgumentParser(description="Migrate ChatGPT export to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

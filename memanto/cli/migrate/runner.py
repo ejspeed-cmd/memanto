@@ -86,7 +86,17 @@ def write_preview(rows: list[dict[str, Any]], dest: Path) -> Path:
 
 
 def source_count(provider: str, export: dict[str, Any]) -> int:
-    """Best-effort count of source records (for the summary header)."""
+    """
+    Count source records using provider-specific export fields.
+    
+    Parameters:
+        provider (str): Name of the export provider.
+        export (dict[str, Any]): Parsed provider export data.
+    
+    Returns:
+        int: Estimated number of source records, using document chunks for empty
+        Supermemory memory exports.
+    """
     if provider == "letta":
         return len(export.get("passages", []) or [])
     if provider == "langgraph":

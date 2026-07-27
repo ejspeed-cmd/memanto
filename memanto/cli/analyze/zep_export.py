@@ -33,6 +33,15 @@ REQUEST_TIMEOUT_S = 60.0
 
 
 def _client(api_key: str) -> httpx.Client:
+    """
+    Create an HTTP client configured for authenticated requests to the Zep API.
+    
+    Parameters:
+    	api_key (str): API key used for request authorization.
+    
+    Returns:
+    	httpx.Client: Configured HTTP client.
+    """
     return httpx.Client(
         base_url=API_BASE,
         timeout=REQUEST_TIMEOUT_S,
@@ -44,6 +53,20 @@ def _client(api_key: str) -> httpx.Client:
 
 
 def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = None) -> Any:
+    """
+    Fetch and decode a JSON response from the specified path.
+    
+    Parameters:
+    	client (httpx.Client): HTTP client used to make the request.
+    	path (str): Request path.
+    	params (dict[str, Any] | None): Optional query parameters.
+    
+    Returns:
+    	Any: Decoded JSON response, or an empty dictionary when the response has no content.
+    
+    Raises:
+    	RuntimeError: If the response status code is 400 or greater.
+    """
     resp = client.get(path, params=params or {})
     if resp.status_code >= 400:
         raise RuntimeError(f"GET {path} -> {resp.status_code}: {resp.text[:500]}")
@@ -51,6 +74,20 @@ def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = N
 
 
 def _post_json(client: httpx.Client, path: str, body: dict[str, Any]) -> Any:
+    """
+    Send a JSON POST request and parse its response.
+    
+    Parameters:
+    	client (httpx.Client): HTTP client used to send the request.
+    	path (str): Request path.
+    	body (dict[str, Any]): JSON request body.
+    
+    Returns:
+    	Any: Parsed JSON response, or an empty list when the response has no content.
+    
+    Raises:
+    	RuntimeError: If the response status code is 400 or higher.
+    """
     resp = client.post(path, json=body)
     if resp.status_code >= 400:
         raise RuntimeError(f"POST {path} -> {resp.status_code}: {resp.text[:500]}")
@@ -58,6 +95,12 @@ def _post_json(client: httpx.Client, path: str, body: dict[str, Any]) -> Any:
 
 
 def list_all_users(client: httpx.Client) -> list[dict[str, Any]]:
+    """
+    Collects all project users from the paginated API.
+    
+    Returns:
+        list[dict[str, Any]]: The collected user records.
+    """
     users: list[dict[str, Any]] = []
     page = 1
     MAX_PAGES = 1000
@@ -83,6 +126,15 @@ def list_all_users(client: httpx.Client) -> list[dict[str, Any]]:
 
 
 def list_user_edges(client: httpx.Client, user_id: str) -> list[dict[str, Any]]:
+    """
+    Collects all graph edges associated with a user.
+    
+    Parameters:
+    	user_id (str): Identifier of the user whose graph edges are requested.
+    
+    Returns:
+    	list[dict[str, Any]]: Graph edge objects associated with the user.
+    """
     edges: list[dict[str, Any]] = []
     cursor: str | None = None
     seen_cursors: set[str] = set()
@@ -119,10 +171,15 @@ def run_zep_export(
     on_progress: Callable[[str], None] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """
-    Export all Zep graph edge facts for every user in the project.
-
-    Returns the written file path and the export dict. The ``memories`` list
-    contains raw edge objects; ``map_zep`` reads the ``fact`` field from each.
+    Export all Zep graph edge facts for project users to a JSON file.
+    
+    Parameters:
+        api_key (str): API key used to authenticate with Zep.
+        dest_dir (Path): Directory where the export file is written.
+        on_progress (Callable[[str], None] | None): Optional callback for progress messages.
+    
+    Returns:
+        tuple[Path, dict[str, Any]]: The written file path and the export data, including users, raw edge objects, and edges grouped by user.
     """
     with _client(api_key) as client:
         if on_progress:
@@ -165,6 +222,17 @@ def run_zep_export(
 
 
 def _write_export_json(export: dict[str, Any], dest_dir: Path, filename: str) -> Path:
+    """
+    Write an export dictionary to a JSON file using an atomic replacement.
+    
+    Parameters:
+        export (dict[str, Any]): Data to serialize as JSON.
+        dest_dir (Path): Directory where the output file is created.
+        filename (str): Name of the output file.
+    
+    Returns:
+        Path: Path to the written JSON file.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = dest_dir / filename
     tmp_path = out_path.with_suffix(".json.tmp")

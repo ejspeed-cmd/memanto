@@ -6,6 +6,14 @@ from memanto.cli.migrate.mappers import map_chroma, map_hindsight, map_zep
 
 
 def _zep_export(*edges):
+    """Create a Zep-style export payload containing the provided memory edges.
+    
+    Parameters:
+    	edges: Memory edge records to include in the export.
+    
+    Returns:
+    	dict: A payload with the edges under the ``memories`` key.
+    """
     return {"memories": list(edges)}
 
 

@@ -16,6 +16,12 @@ import sys
 
 
 def main() -> int:
+    """
+    Run the Letta memory migration through the Memanto CLI.
+    
+    Returns:
+        int: The subprocess exit status, or 1 when no Letta API key is provided.
+    """
     parser = argparse.ArgumentParser(description="Migrate Letta memories to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

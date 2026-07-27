@@ -19,6 +19,15 @@ _SCRIPTS = Path(__file__).parent
 
 
 def main() -> int:
+    """
+    Dump LangGraph data and migrate it into Memanto.
+    
+    The migration can be limited to an agent and run in dry-run mode through
+    the corresponding command-line options.
+    
+    Returns:
+        int: The migration command's exit code, or 1 if the LangGraph dump fails.
+    """
     parser = argparse.ArgumentParser(description="Dump LangGraph store and migrate to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)

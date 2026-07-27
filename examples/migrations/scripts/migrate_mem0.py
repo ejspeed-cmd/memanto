@@ -16,6 +16,12 @@ import sys
 
 
 def main() -> int:
+    """
+    Migrate Mem0 memories to Memanto using command-line options.
+    
+    Returns:
+        int: Exit status of the migration command, or 1 if no Mem0 API key is available.
+    """
     parser = argparse.ArgumentParser(description="Migrate Mem0 memories to Memanto")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--agent", default=None)
