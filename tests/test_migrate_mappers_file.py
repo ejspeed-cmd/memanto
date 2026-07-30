@@ -1,6 +1,6 @@
 import pytest
 
-from memanto.cli.migrate.mappers import map_langgraph, map_notion, map_obsidian
+from examples.migrations.mappers import map_langgraph, map_notion, map_obsidian
 
 
 def _lg_item(key, value, namespace=None):

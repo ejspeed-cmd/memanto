@@ -1,6 +1,6 @@
 import pytest
 
-from memanto.cli.migrate.runner import source_count
+from examples.migrations.runner import source_count
 
 ALL_PROVIDERS = [
     "mem0", "letta", "supermemory", "okf", "chatgpt", "claude",

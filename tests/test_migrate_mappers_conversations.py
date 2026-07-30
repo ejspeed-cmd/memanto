@@ -1,6 +1,6 @@
 import pytest
 
-from memanto.cli.migrate.mappers import map_chatgpt, map_claude, map_gemini
+from examples.migrations.mappers import map_chatgpt, map_claude, map_gemini
 
 
 def _chatgpt_export(*user_texts, conv_id="conv-1", title="Test Conv"):

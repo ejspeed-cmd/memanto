@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from memanto.cli.migrate.mappers import map_chroma, map_hindsight, map_zep
+from examples.migrations.mappers import map_chroma, map_hindsight, map_zep
 
 
 def _zep_export(*edges):
