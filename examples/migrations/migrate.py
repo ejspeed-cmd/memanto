@@ -1,187 +1,100 @@
 #!/usr/bin/env python3
 """
-Standalone showcase runner for the ai-conversations migration example.
+Standalone showcase runner for the migrations example.
 
-Runs `memanto migrate conversations --dry-run` for chatgpt, claude and gemini
-sources against the sample_data/ ZIPs, then prints a per-source summary table.
-Also runs `memanto migrate langgraph --dry-run` if scripts/langgraph_seed.json
-exists.
+Runs dry-run migrations for chatgpt, claude, gemini, and langgraph
+against sample_data/ ZIPs, then prints a per-source summary table.
 
 No live Memanto server or API key is needed when only --dry-run is used.
 
 Usage:
     python migrate.py
-    python migrate.py --live --agent my-agent-id     # live migration
+    python migrate.py --live --agent my-agent-id
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 _HERE = Path(__file__).parent
 _SAMPLE = _HERE / "sample_data"
 _SCRIPTS = _HERE / "scripts"
 
-
-def _run(cmd: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
-    """
-    Run a subprocess with the current environment and optional environment overrides.
-    
-    Parameters:
-    	cmd (list[str]): Command and arguments to execute.
-    	extra_env (dict | None): Environment variables to add or override.
-    
-    Returns:
-    	subprocess.CompletedProcess: The completed subprocess result, including captured output and exit status.
-    """
-    import os
-    env = {**os.environ, **(extra_env or {})}
-    return subprocess.run(cmd, capture_output=True, text=True, env=env)
+# Allow running from repo root or from inside examples/migrations/
+_REPO_ROOT = _HERE.parent.parent
+for _p in (_HERE, _REPO_ROOT):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 
-def _parse_summary(stdout: str) -> dict:
-    """
-    Parse migration output into record counts and a type breakdown.
-    
-    Parameters:
-    	stdout (str): Migration output containing summary fields.
-    
-    Returns:
-    	dict: A summary with source record, mapped, and skipped counts, plus counts grouped by type.
-    """
-    summary = {"source_records": 0, "mapped": 0, "skipped": 0, "types": {}}
-    for line in stdout.splitlines():
-        stripped = line.strip()
-        if "Source records:" in stripped:
-            try:
-                summary["source_records"] = int(stripped.split("Source records:")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "Mapped memories:" in stripped:
-            try:
-                parts = stripped.split("Mapped memories:")[-1].strip().split()
-                summary["mapped"] = int(parts[0])
-                if "(skipped" in stripped:
-                    summary["skipped"] = int(stripped.split("(skipped")[-1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-        if "Type breakdown:" in stripped:
-            raw = stripped.split("Type breakdown:")[-1].strip()
-            for part in raw.split(","):
-                part = part.strip()
-                if ":" in part:
-                    k, v = part.split(":", 1)
-                    try:
-                        summary["types"][k.strip()] = int(v.strip())
-                    except ValueError:
-                        pass
-    return summary
+def _load_runner():
+    try:
+        from runner import run_migration
+        return run_migration
+    except ImportError:
+        from examples.migrations.runner import run_migration
+        return run_migration
 
 
-def _run_conversation(source: str, agent: str | None, dry_run: bool) -> dict | None:
-    """
-    Run a conversation migration for a sample source export.
-    
-    Parameters:
-    	source (str): Conversation export source name used to locate the sample ZIP file.
-    	agent (str | None): Target agent identifier for the migration, when provided.
-    	dry_run (bool): Whether to preview the migration without writing changes.
-    
-    Returns:
-    	dict | None: A migration summary containing record counts, type breakdown, exit status, and any detected error; `None` if the sample ZIP file is missing.
-    """
-    zip_path = _SAMPLE / f"{source}_export.zip"
+def _load_sdk():
+    from memanto.cli.client.sdk_client import SdkClient
+    return SdkClient
+
+
+def _parse_zip_export(zip_path: Path, provider: str) -> dict | None:
+    import re
     if not zip_path.exists():
-        print(f"  [skip] {zip_path} not found")
         return None
+    with zipfile.ZipFile(zip_path) as zf:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            zf.extractall(tmp)
 
-    cmd = [
-        sys.executable, "-m", "memanto.cli.main",
-        "migrate", "conversations", str(zip_path),
-        "--source", source,
-    ]
-    if dry_run:
-        cmd.append("--dry-run")
-    if agent:
-        cmd += ["--agent", agent]
+            # Gemini activity JSON format
+            json_hits = list(tmp_path.rglob("My Activity.json"))
+            if json_hits and provider == "gemini":
+                entries = json.loads(json_hits[0].read_text(encoding="utf-8"))
+                convs = []
+                for e in entries:
+                    if not isinstance(e, dict):
+                        continue
+                    title = (e.get("title") or "").strip()
+                    prompt = re.sub(r"^Prompted\s+", "", title).strip()
+                    if not prompt:
+                        continue
+                    convs.append({
+                        "messages": [{"role": "user", "text": prompt}],
+                        "createdTime": e.get("time"),
+                        "id": e.get("gmr_id"),
+                    })
+                return {"memories": convs}
 
-    result = _run(cmd)
-    combined = result.stdout + result.stderr
-    summary = _parse_summary(combined)
-    summary["exit_code"] = result.returncode
-    summary["error"] = None
+            json_files = list(tmp_path.rglob("*.json"))
+            if not json_files:
+                return {"memories": []}
 
-    if result.returncode != 0:
-        for line in combined.splitlines():
-            if "error" in line.lower() or "failed" in line.lower():
-                summary["error"] = line.strip()
-                break
-    elif summary["source_records"] == 0 and summary["mapped"] == 0:
-        print(f"  [warn] {source}: command succeeded but produced no summary — output format may have changed", file=sys.stderr)
+            # Claude: prefer conversations.json
+            if provider == "claude":
+                conv_file = next((f for f in json_files if f.name == "conversations.json"), None)
+                target = conv_file or json_files[0]
+            else:
+                target = json_files[0]
 
-    return summary
-
-
-def _run_langgraph(agent: str | None, dry_run: bool) -> dict | None:
-    """Run the langgraph migration for the available seed file.
-    
-    Parameters:
-    	agent (str | None): Target agent identifier for the migration.
-    	dry_run (bool): Whether to preview the migration without writing changes.
-    
-    Returns:
-    	dict | None: A parsed migration summary with exit status and error details, or `None` if the seed file is missing.
-    """
-    seed = _SCRIPTS / "langgraph_seed.json"
-    if not seed.exists():
-        return None
-
-    cmd = [
-        sys.executable, "-m", "memanto.cli.main",
-        "migrate", "langgraph", "--file", str(seed),
-    ]
-    if dry_run:
-        cmd.append("--dry-run")
-    if agent:
-        cmd += ["--agent", agent]
-
-    result = _run(cmd)
-    combined = result.stdout + result.stderr
-    summary = _parse_summary(combined)
-    summary["exit_code"] = result.returncode
-    summary["error"] = None
-    if result.returncode != 0:
-        for line in combined.splitlines():
-            if "error" in line.lower() or "failed" in line.lower():
-                summary["error"] = line.strip()
-                break
-    return summary
+            data = json.loads(target.read_text(encoding="utf-8"))
+            return {"memories": data} if isinstance(data, list) else data
 
 
 def _print_table(rows: list[tuple]) -> None:
-    """Print a fixed-width summary table for migration results.
-    
-    Parameters:
-    	rows (list[tuple]): Rows containing source, record counts, type details, and status.
-    """
     headers = ["source", "records", "mapped", "skipped", "types", "status"]
     widths = [12, 9, 8, 9, 28, 8]
 
     def fmt(vals):
-        """
-        Format values as a fixed-width row with two-space column separators.
-        
-        Parameters:
-        	vals: Values to format according to the configured column widths.
-        
-        Returns:
-        	str: The formatted row.
-        """
         return "  ".join(str(v).ljust(w) for v, w in zip(vals, widths))
 
     print()
@@ -193,12 +106,6 @@ def _print_table(rows: list[tuple]) -> None:
 
 
 def main() -> int:
-    """
-    Run the migration showcase in dry-run or live mode and print a summary table.
-    
-    Returns:
-        int: `0` if all migration sources succeed or are skipped, `1` if argument validation fails or any source fails.
-    """
     parser = argparse.ArgumentParser(description="Showcase migration runner")
     parser.add_argument("--agent", default=None, help="Target agent ID (omit for dry-run)")
     parser.add_argument("--live", action="store_true", help="Run live migration (requires --agent and MOORCHEH_API_KEY)")
@@ -211,6 +118,19 @@ def main() -> int:
         print("--live requires --agent <id>", file=sys.stderr)
         return 1
 
+    run_migration = _load_runner()
+
+    if not dry_run:
+        import os
+        api_key = os.environ.get("MOORCHEH_API_KEY")
+        if not api_key:
+            print("MOORCHEH_API_KEY not set", file=sys.stderr)
+            return 1
+        SdkClient = _load_sdk()
+        client = SdkClient(api_key=api_key)
+    else:
+        client = None
+
     mode = "dry-run preview" if dry_run else f"live migration → {agent}"
     print(f"\nai-conversations migration showcase  [{mode}]")
     print("=" * 60)
@@ -220,22 +140,42 @@ def main() -> int:
 
     for source in sources:
         print(f"  running {source}...")
-        s = _run_conversation(source, agent, dry_run)
-        if s is None:
+        export = _parse_zip_export(_SAMPLE / f"{source}_export.zip", source)
+        if export is None:
             rows.append((source, "—", "—", "—", "sample zip missing", "SKIP"))
             continue
-        types_str = ", ".join(f"{k}:{v}" for k, v in s["types"].items()) or "auto"
-        status = "OK" if s["exit_code"] == 0 else "FAIL"
-        rows.append((source, s["source_records"], s["mapped"], s["skipped"], types_str, status))
+        try:
+            s, _ = run_migration(
+                provider=source,
+                export=export,
+                client=client,
+                agent_id=agent or "",
+                dry_run=dry_run,
+            )
+            types_str = ", ".join(f"{k}:{v}" for k, v in s.type_counts.items()) or "auto"
+            rows.append((source, s.source_count, s.mapped_count, s.skipped, types_str, "OK"))
+        except Exception as exc:
+            rows.append((source, "—", "—", "—", str(exc)[:28], "FAIL"))
 
-    lg = _run_langgraph(agent, dry_run)
-    if lg is None:
-        rows.append(("langgraph", "—", "—", "—", "seed file missing", "SKIP"))
-    else:
+    # LangGraph -- use seed file if present
+    seed = _SCRIPTS / "langgraph_seed.json"
+    if seed.exists():
         print("  running langgraph...")
-        types_str = ", ".join(f"{k}:{v}" for k, v in lg["types"].items()) or "auto"
-        status = "OK" if lg["exit_code"] == 0 else "FAIL"
-        rows.append(("langgraph", lg["source_records"], lg["mapped"], lg["skipped"], types_str, status))
+        try:
+            export = json.loads(seed.read_text(encoding="utf-8"))
+            s, _ = run_migration(
+                provider="langgraph",
+                export=export,
+                client=client,
+                agent_id=agent or "",
+                dry_run=dry_run,
+            )
+            types_str = ", ".join(f"{k}:{v}" for k, v in s.type_counts.items()) or "auto"
+            rows.append(("langgraph", s.source_count, s.mapped_count, s.skipped, types_str, "OK"))
+        except Exception as exc:
+            rows.append(("langgraph", "—", "—", "—", str(exc)[:28], "FAIL"))
+    else:
+        rows.append(("langgraph", "—", "—", "—", "seed file missing", "SKIP"))
 
     _print_table(rows)
 
