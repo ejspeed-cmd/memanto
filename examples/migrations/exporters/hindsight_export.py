@@ -1,28 +1,26 @@
 """
 Export Hindsight memory bank to JSON.
 
-Used by ``memanto migrate hindsight``. Pure ``httpx`` — no Hindsight SDK dependency.
-
 Endpoints (Hindsight Cloud REST API):
     GET /v1/default/banks                                    list all banks
-    GET /v1/default/banks/{bank_id}/memories/list
-        ?limit=&offset=                                      paginate memories
-
-Each memory item uses ``text`` (not ``content``) and ``fact_type`` (not ``type``).
+    GET /v1/default/banks/{bank_id}/memories/list?limit=&offset=
 
 Auth: ``authorization: <api_key>`` header (no Bearer prefix).
 """
 
 from __future__ import annotations
 
-import httpx
-
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from memanto.cli.analyze.zep_export import _write_export_json
+import httpx
+
+try:
+    from .zep_export import _write_export_json
+except ImportError:
+    from zep_export import _write_export_json  # type: ignore[no-redef]
 
 DEFAULT_BASE_URL = "https://api.hindsight.vectorize.io"
 PAGE_SIZE = 100
@@ -30,15 +28,6 @@ REQUEST_TIMEOUT_S = 60.0
 
 
 def _client(api_key: str, base_url: str) -> httpx.Client:
-    """Create an HTTP client configured for the Hindsight API.
-    
-    Parameters:
-    	api_key (str): API key used for authorization.
-    	base_url (str): Base URL for API requests.
-    
-    Returns:
-    	httpx.Client: Configured HTTP client.
-    """
     return httpx.Client(
         base_url=base_url,
         timeout=REQUEST_TIMEOUT_S,
@@ -50,20 +39,6 @@ def _client(api_key: str, base_url: str) -> httpx.Client:
 
 
 def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = None) -> Any:
-    """
-    Retrieve JSON data from an API endpoint.
-    
-    Parameters:
-    	client (httpx.Client): HTTP client used to make the request.
-    	path (str): Endpoint path to request.
-    	params (dict[str, Any] | None): Optional query parameters.
-    
-    Returns:
-    	Any: Decoded JSON response, or an empty dictionary when the response has no content.
-    
-    Raises:
-    	RuntimeError: If the response status code is 400 or greater.
-    """
     resp = client.get(path, params=params or {})
     if resp.status_code >= 400:
         raise RuntimeError(f"GET {path} -> {resp.status_code}: {resp.text[:500]}")
@@ -71,29 +46,11 @@ def _get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = N
 
 
 def list_all_banks(client: httpx.Client) -> list[dict[str, Any]]:
-    """
-    List all memory banks available in the default Hindsight environment.
-    
-    Returns:
-    	list[dict[str, Any]]: The available memory banks.
-    """
     data = _get_json(client, "/v1/default/banks")
     return data.get("banks") or []
 
 
 def list_bank_memories(client: httpx.Client, bank_id: str) -> list[dict[str, Any]]:
-    """
-    Collects all memories for a bank across paginated API responses.
-    
-    Parameters:
-        bank_id (str): Identifier of the bank whose memories should be collected.
-    
-    Returns:
-        list[dict[str, Any]]: The bank's memory records.
-    
-    Raises:
-        RuntimeError: If the pagination limit is reached before all memories are collected.
-    """
     memories: list[dict[str, Any]] = []
     offset = 0
     MAX_PAGES = 500
@@ -129,19 +86,6 @@ def run_hindsight_export(
     bank_id: str | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
-    """
-    Export Hindsight memories for all banks or a selected bank to a JSON file.
-
-    Parameters:
-        api_key (str): API key used to authenticate with Hindsight.
-        dest_dir (Path): Directory where the export file is written.
-        base_url (str): Base URL for the Hindsight API.
-        bank_id (str | None): Identifier of a specific bank to export. If omitted, all banks are exported.
-        on_progress (Callable[[str], None] | None): Optional callback that receives progress messages.
-
-    Returns:
-        tuple[Path, dict[str, Any]]: The written file path and the complete export data.
-    """
     with _client(api_key, base_url) as client:
         if bank_id:
             banks = [{"bank_id": bank_id}]
@@ -184,5 +128,4 @@ def run_hindsight_export(
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = _write_export_json(export, dest_dir, "hindsight_export.json")
-
     return out_path, export

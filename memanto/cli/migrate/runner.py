@@ -86,74 +86,13 @@ def write_preview(rows: list[dict[str, Any]], dest: Path) -> Path:
 
 
 def source_count(provider: str, export: dict[str, Any]) -> int:
-    """
-    Count source records using provider-specific export fields.
-    
-    Parameters:
-        provider (str): Name of the export provider.
-        export (dict[str, Any]): Parsed provider export data.
-    
-    Returns:
-        int: Estimated number of source records, using document chunks for empty
-        Supermemory memory exports.
-    """
+    """Best-effort count of source records (for the summary header)."""
     if provider == "letta":
         return len(export.get("passages", []) or [])
-    if provider == "langgraph":
-        return len(export.get("items", []) or [])
-    if provider == "chatgpt":
-        count = 0
-        for conv in (export.get("memories", []) or []):
-            if not isinstance(conv, dict):
-                continue
-            mapping = conv.get("mapping") or {}
-            if not isinstance(mapping, dict):
-                continue
-            current_node = conv.get("current_node")
-            if current_node:
-                seen: set[str] = set()
-                node_id = current_node
-                while node_id and node_id not in seen:
-                    seen.add(node_id)
-                    node = mapping.get(node_id)
-                    if not isinstance(node, dict):
-                        break
-                    msg = node.get("message")
-                    if isinstance(msg, dict):
-                        author = msg.get("author") or {}
-                        content_obj = msg.get("content") or {}
-                        if (
-                            author.get("role") == "user"
-                            and content_obj.get("content_type", "text") != "user_editable_context"
-                        ):
-                            parts = content_obj.get("parts") or []
-                            if any(isinstance(p, str) and p.strip() for p in parts):
-                                count += 1
-                    node_id = node.get("parent")
-            else:
-                for node in mapping.values():
-                    if not isinstance(node, dict):
-                        continue
-                    msg = node.get("message")
-                    if not isinstance(msg, dict):
-                        continue
-                    author = msg.get("author") or {}
-                    if author.get("role") == "user":
-                        count += 1
-        return count
-    if provider in ("claude", "gemini"):
-        role_key = "sender" if provider == "claude" else "role"
-        role_val = "human" if provider == "claude" else "user"
-        msg_key = "chat_messages" if provider == "claude" else "messages"
-        return sum(
-            1
-            for conv in (export.get("memories", []) or [])
-            if isinstance(conv, dict)
-            for msg in (conv.get(msg_key) or [])
-            if isinstance(msg, dict) and msg.get(role_key) == role_val
-        )
     memories = export.get("memories", []) or []
     if provider == "supermemory" and not memories:
+        # Mirror map_supermemory's fallback: when no extracted memories exist
+        # we harvest document chunks, so the summary should reflect that.
         return sum(
             len(doc.get("chunks", []) or [])
             for doc in (export.get("documents", []) or [])
@@ -189,6 +128,8 @@ def run_migration(
     batches = list(chunked(rows, BATCH_LIMIT))
     summary.batches = len(batches)
 
+    from memanto.app.utils.errors import MemoryError
+
     for idx, batch in enumerate(batches, 1):
         if on_progress:
             on_progress(
@@ -196,18 +137,38 @@ def run_migration(
             )
         try:
             result = client.batch_remember(agent_id=agent_id, memories=batch)
-        except Exception as exc:  # noqa: BLE001 — surface any client failure
+        except MemoryError:
+            raise
+        except Exception as exc:
             summary.failed += len(batch)
             summary.errors.append(f"batch {idx}: {exc}")
             continue
+
+        if not isinstance(result, dict):
+            raise MemoryError(
+                message="Data corruption detected: Received malformed batch response envelope during migration.",
+                details={"result_preview": str(result)[:100]},
+            )
+
+        batch_results = result.get("results")
+        if not isinstance(batch_results, list):
+            raise MemoryError(
+                message="Data corruption detected: Received malformed batch result array during migration.",
+                details={"results_preview": str(batch_results)[:100]},
+            )
 
         successful = int(result.get("successful") or 0)
         failed = int(result.get("failed") or 0)
         summary.imported += successful
         summary.failed += failed
 
-        # batch_remember reports per-item errors in results[]; surface a few.
-        for item in (result.get("results") or [])[:5]:
+        # batch_remember reports per-item errors in results[]; surface all errors.
+        for item in batch_results:
+            if not isinstance(item, dict) or not item:
+                raise MemoryError(
+                    message="Data corruption detected: Received malformed batch result from storage layer during migration.",
+                    details={"item_preview": str(item)[:100]},
+                )
             err = item.get("error")
             if err:
                 summary.errors.append(f"batch {idx}: {err}")

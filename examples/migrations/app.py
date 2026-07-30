@@ -14,12 +14,22 @@ import base64
 import io
 import json
 import os
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+
+# Allow running as `streamlit run app.py` from inside examples/migrations/
+# as well as `streamlit run examples/migrations/app.py` from the repo root.
+_HERE = Path(__file__).parent
+_REPO_ROOT = _HERE.parent.parent
+for _p in (_HERE, _REPO_ROOT):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 st.set_page_config(
     page_title="Memanto Migration",
@@ -48,8 +58,15 @@ def _load_memanto():
     	tuple: The mapper registry, migration runner, and SDK client class.
     """
     try:
-        from memanto.cli.migrate.mappers import MAPPERS
-        from memanto.cli.migrate.runner import run_migration
+        from mappers import MAPPERS
+        from runner import run_migration
+        from memanto.cli.client.sdk_client import SdkClient
+        return MAPPERS, run_migration, SdkClient
+    except ImportError:
+        pass
+    try:
+        from examples.migrations.mappers import MAPPERS
+        from examples.migrations.runner import run_migration
         from memanto.cli.client.sdk_client import SdkClient
         return MAPPERS, run_migration, SdkClient
     except ImportError as exc:
@@ -186,10 +203,16 @@ def _fetch_export(source: str, provider_key: str, **kwargs) -> dict | None:
                 from memanto.cli.analyze.supermemory_export import run_supermemory_export
                 _, export = run_supermemory_export(provider_key, tmp_path)
             elif source == "zep":
-                from memanto.cli.analyze.zep_export import run_zep_export
+                try:
+                    from exporters.zep_export import run_zep_export
+                except ImportError:
+                    from examples.migrations.exporters.zep_export import run_zep_export
                 _, export = run_zep_export(provider_key, tmp_path)
             elif source == "hindsight":
-                from memanto.cli.analyze.hindsight_export import run_hindsight_export
+                try:
+                    from exporters.hindsight_export import run_hindsight_export
+                except ImportError:
+                    from examples.migrations.exporters.hindsight_export import run_hindsight_export
                 base_url = kwargs.get("base_url")
                 kw = {"base_url": base_url} if base_url else {}
                 _, export = run_hindsight_export(provider_key, tmp_path, **kw)
