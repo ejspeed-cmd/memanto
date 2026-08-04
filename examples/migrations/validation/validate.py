@@ -53,7 +53,7 @@ def _build_judge():
     Returns:
         LLMJudge: The configured language model judge.
     """
-    evaluator_path = _HERE.parent.parent.parent / "benchmarks" / "memanto-vs-mem0" / "evaluator.py"
+    evaluator_path = _HERE.parent.parent / "benchmarks" / "memanto-vs-mem0" / "evaluator.py"
     import importlib.util
     spec = importlib.util.spec_from_file_location("evaluator", evaluator_path)
     mod = importlib.util.module_from_spec(spec)

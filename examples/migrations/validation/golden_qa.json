@@ -60,7 +60,7 @@
     "question": "What provenance field values did Alex ask about for tracking agent-added vs migrated memories?",
     "answer": "Alex asked about a provenance field to distinguish memories the agent added from those inherited via migration.",
     "source": "claude",
-    "rationale": "Claude conversation 'Memory architecture for AI agents' — the user message asks about a provenance field for this exact distinction."
+    "rationale": "Claude conversation 'Tracking memory provenance for AI agents' — the user message asks about a provenance field for this exact distinction."
   },
   {
     "id": "qa_010",

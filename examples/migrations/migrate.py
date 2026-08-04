@@ -53,7 +53,11 @@ def _parse_zip_export(zip_path: Path, provider: str) -> dict | None:
         return None
     with zipfile.ZipFile(zip_path) as zf:
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
+            tmp_path = Path(tmp).resolve()
+            for member in zf.namelist():
+                dest = (tmp_path / member).resolve()
+                if not dest.is_relative_to(tmp_path):
+                    raise zipfile.BadZipFile(f"Unsafe path in archive: {member}")
             zf.extractall(tmp)
 
             # Gemini activity JSON format
@@ -79,8 +83,8 @@ def _parse_zip_export(zip_path: Path, provider: str) -> dict | None:
             if not json_files:
                 return {"memories": []}
 
-            # Claude: prefer conversations.json
-            if provider == "claude":
+            # chatgpt and claude both use conversations.json
+            if provider in ("claude", "chatgpt"):
                 conv_file = next((f for f in json_files if f.name == "conversations.json"), None)
                 target = conv_file or json_files[0]
             else:
@@ -128,6 +132,7 @@ def main() -> int:
             return 1
         SdkClient = _load_sdk()
         client = SdkClient(api_key=api_key)
+        client.activate_agent(agent, duration_hours=2)
     else:
         client = None
 
@@ -178,6 +183,9 @@ def main() -> int:
         rows.append(("langgraph", "—", "—", "—", "seed file missing", "SKIP"))
 
     _print_table(rows)
+
+    if not dry_run and client is not None:
+        client.deactivate_agent(agent)
 
     ok = all(r[5] in ("OK", "SKIP") for r in rows)
     if not ok:

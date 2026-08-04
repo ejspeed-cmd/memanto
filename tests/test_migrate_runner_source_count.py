@@ -43,6 +43,57 @@ def test_chatgpt_counts_user_nodes():
     assert source_count("chatgpt", export) == 3
 
 
+def test_chatgpt_current_node_traversal():
+    """current_node path counts only reachable user nodes with non-empty parts."""
+    root = "root-id"
+    user_id = "user-id"
+    ctx_id = "ctx-id"
+    asst_id = "asst-id"
+    export = {
+        "memories": [
+            {
+                "current_node": asst_id,
+                "mapping": {
+                    root: {"id": root, "message": None, "parent": None},
+                    user_id: {
+                        "id": user_id,
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"content_type": "text", "parts": ["hello"]},
+                        },
+                        "parent": root,
+                    },
+                    ctx_id: {
+                        "id": ctx_id,
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"content_type": "user_editable_context", "parts": ["ctx"]},
+                        },
+                        "parent": user_id,
+                    },
+                    asst_id: {
+                        "id": asst_id,
+                        "message": {
+                            "author": {"role": "assistant"},
+                            "content": {"content_type": "text", "parts": ["hi"]},
+                        },
+                        "parent": ctx_id,
+                    },
+                },
+            }
+        ]
+    }
+    # user_editable_context is excluded; only the plain user node counts
+    assert source_count("chatgpt", export) == 1
+    # map_chatgpt must agree
+    try:
+        from examples.migrations.mappers import map_chatgpt
+    except ImportError:
+        from mappers import map_chatgpt  # type: ignore
+    rows = map_chatgpt(export)
+    assert len(rows) == source_count("chatgpt", export)
+
+
 def test_claude_counts_human_messages():
     export = {
         "memories": [

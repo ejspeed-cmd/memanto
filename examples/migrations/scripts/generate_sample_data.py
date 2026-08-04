@@ -440,7 +440,7 @@ def deidentify_gemini(src: Path) -> bytes:
     	bytes: ZIP data containing synthetic Gemini activity entries.
     """
     real = _read_zip_json(src, _GEMINI_INNER)
-    entries = [_build_gemini_entry(i) for i in range(min(5, len(EXCHANGES)))]
+    entries = [_build_gemini_entry(i) for i in range(min(5, len(real)))]
     return _write_zip({_GEMINI_INNER: entries})
 
 

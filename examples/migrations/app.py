@@ -153,7 +153,7 @@ def _load_export_from_bytes(file_bytes: bytes, source: str) -> dict[str, Any]:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
                 for member in zf.infolist():
                     dest = (tmp_path / member.filename).resolve()
-                    if not str(dest).startswith(str(tmp_path.resolve())):
+                    if not dest.is_relative_to(tmp_path.resolve()):
                         st.error("ZIP archive contains unsafe paths and cannot be extracted.")
                         st.stop()
                 zf.extractall(tmp)

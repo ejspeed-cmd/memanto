@@ -42,7 +42,7 @@ python scripts/migrate_chroma.py [--dry-run] [--agent <id>]
 
 ## What gets fetched
 
-The CLI calls `collection.get(include=["documents", "metadatas", "ids"])` and
+The CLI calls `collection.get(include=["documents", "metadatas"])` and
 normalizes the response into the standard export shape before passing to the mapper.
 
 If `chromadb` is not installed, the command exits with a `pip install chromadb` hint.

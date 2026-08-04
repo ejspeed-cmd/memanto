@@ -43,7 +43,8 @@ Each edge fact becomes one Memanto memory.
 | Source field | Memanto field | Notes |
 |---|---|---|
 | `fact` | `content` | The fact text |
-| `valid_at` | `created_at` | Parsed via `_parse_dt` |
+| `valid_at` or `created_at` | `created_at` | `valid_at` checked first; falls back to `created_at` via `_parse_dt` |
+| `score` or `relevance` | `confidence` | Clamped to 0–1; defaults to 0.8 when absent |
 | hardcoded | `type` | `"fact"` |
 | hardcoded | `source` | `"zep"` |
 | hardcoded | `provenance` | `"imported"` |
