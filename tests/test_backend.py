@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from memanto.app.clients.backend import (
     Backend,
+    get_active_embedding_model,
     get_active_llm_model,
     parse_backend,
 )
@@ -75,6 +76,44 @@ class TestActiveLlmModel:
         # No state.json → return None so callers omit ai_model and let the
         # server use its own configured LLM (no silent cloud fallback).
         assert get_active_llm_model("anthropic.claude-sonnet-4-6") is None
+
+
+class TestActiveEmbeddingModel:
+    def test_on_prem_rejects_malformed_state_shapes(self, tmp_path, monkeypatch):
+        import json
+
+        from memanto.app.config import settings
+
+        monkeypatch.setattr(settings, "MEMANTO_BACKEND", "on-prem")
+        monkeypatch.setattr(
+            "memanto.app.clients.backend.Path",
+            type("P", (), {"home": classmethod(lambda cls: tmp_path)}),
+        )
+        state_dir = tmp_path / ".memanto" / "on-prem"
+        state_dir.mkdir(parents=True)
+        state_path = state_dir / "state.json"
+
+        for malformed_state in ([], "model", {"embedding_model": 42}):
+            state_path.write_text(json.dumps(malformed_state))
+            assert get_active_embedding_model() is None
+
+    def test_on_prem_reads_nonempty_embedding_model(self, tmp_path, monkeypatch):
+        import json
+
+        from memanto.app.config import settings
+
+        monkeypatch.setattr(settings, "MEMANTO_BACKEND", "on-prem")
+        monkeypatch.setattr(
+            "memanto.app.clients.backend.Path",
+            type("P", (), {"home": classmethod(lambda cls: tmp_path)}),
+        )
+        state_dir = tmp_path / ".memanto" / "on-prem"
+        state_dir.mkdir(parents=True)
+        (state_dir / "state.json").write_text(
+            json.dumps({"embedding_model": "nomic-embed-text"})
+        )
+
+        assert get_active_embedding_model() == "nomic-embed-text"
 
 
 class TestOnPremClient:
@@ -298,3 +337,46 @@ class TestDataDirRouting:
         result = app_config.get_data_dir()
         assert result == tmp_path / ".memanto" / "on-prem"
         assert result.exists()
+
+
+class TestExportDataDirRouting:
+    def test_export_cache_is_isolated_by_backend(self, tmp_path, monkeypatch):
+        from memanto.app import config as app_config
+        from memanto.app.services.memory_export_service import MemoryExportService
+        from memanto.cli.client.direct_client import DirectClient
+        from memanto.cli.client.sdk_client import SdkClient
+
+        monkeypatch.setattr(app_config.settings, "MEMANTO_BACKEND", "on-prem")
+        monkeypatch.setattr(app_config.Path, "home", classmethod(lambda cls: tmp_path))
+
+        cloud_cache = tmp_path / ".memanto" / "exports" / "agent-1_memory.md"
+        cloud_cache.parent.mkdir(parents=True)
+        cloud_cache.write_text("# cloud export", encoding="utf-8")
+
+        on_prem_cache = (
+            tmp_path / ".memanto" / "on-prem" / "exports" / "agent-1_memory.md"
+        )
+        on_prem_cache.parent.mkdir(parents=True)
+        on_prem_cache.write_text("# on-prem export", encoding="utf-8")
+
+        assert MemoryExportService().exports_dir == on_prem_cache.parent
+
+        for client_cls in (DirectClient, SdkClient):
+            client = client_cls(api_key="dummy-key")
+            export_calls = []
+            monkeypatch.setattr(
+                client,
+                "export_memory_md",
+                lambda export_calls=export_calls, **kwargs: export_calls.append(kwargs)
+                or {"output_path": str(on_prem_cache)},
+            )
+            project_dir = tmp_path / "projects" / client_cls.__name__
+
+            result = client.sync_memory_to_project("agent-1", str(project_dir))
+
+            assert result["source"] == "cache"
+            assert not export_calls
+            assert (project_dir / "MEMORY.md").read_text(encoding="utf-8") == (
+                "# on-prem export"
+            )
+            assert cloud_cache.read_text(encoding="utf-8") == "# cloud export"
