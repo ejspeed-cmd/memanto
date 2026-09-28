@@ -44,7 +44,7 @@ from memanto.app.routes.auth_deps import (
 from memanto.app.services.session_service import get_session_service
 from memanto.app.utils.errors import MemoryOperationError
 from memanto.app.utils.temporal_helpers import utc_date_str
-from memanto.app.utils.validation import validate_safe_id
+from memanto.app.utils.validation import validate_output_path, validate_safe_id
 from memanto.cli.client.direct_client import DirectClient
 from memanto.cli.config.manager import ConfigManager, _validate_server_port
 from memanto.cli.connect.agent_registry import AGENT_REGISTRY, list_agents
@@ -550,11 +550,32 @@ async def _do_restart_onprem_backend(_asyncio, subprocess, _httpx):
 async def update_api_key(body: dict, _: None = Depends(_require_local)):
     """
     Update the Moorcheh API key from the Web UI.
-    Expects: {"api_key": "new-key-value"}
+    Expects: {"api_key": "new-key-value", "current_key": "existing-key"}
+
+    When a key is already configured, the caller must supply the correct
+    current_key to authorize the replacement.  This prevents a loopback
+    attacker (e.g. via DNS rebinding) from silently swapping credentials.
     """
+    import secrets as _secrets
+
     new_key = body.get("api_key", "").strip()
     if not new_key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
+
+    existing = (_config_manager.get_api_key() or "").strip()
+    if existing:
+        presented = body.get("current_key", "").strip()
+        if not presented:
+            raise HTTPException(
+                status_code=403,
+                detail="current_key is required to replace an existing API key.",
+            )
+        if not _secrets.compare_digest(presented, existing):
+            raise HTTPException(
+                status_code=403,
+                detail="current_key does not match the configured API key.",
+            )
+
     _config_manager.set_api_key(new_key)
     preview = f"••••••••{new_key[-6:]}" if len(new_key) > 6 else "***"
     return {"status": "updated", "api_key_preview": preview}
@@ -1198,13 +1219,16 @@ async def connections_install(body: dict, _: None = Depends(_require_local)):
             raise HTTPException(
                 status_code=400, detail="`project_dir` is required when not global"
             )
-        path_obj = Path(project_dir).expanduser()
-        if not path_obj.exists() or not path_obj.is_dir():
+        # Restrict to the user's home directory to prevent writes to arbitrary paths.
+        resolved = validate_output_path(project_dir, base_dir=Path.home())
+        if resolved is None:
+            raise HTTPException(status_code=400, detail="Invalid project_dir")
+        if not resolved.exists() or not resolved.is_dir():
             raise HTTPException(
                 status_code=400,
                 detail=f"project_dir does not exist or is not a directory: {project_dir}",
             )
-        project_dir = str(path_obj.resolve())
+        project_dir = str(resolved)
 
     results = [install_agent(name, project_dir, is_global) for name in agents]
     return {"results": results}
@@ -1229,7 +1253,10 @@ async def connections_uninstall(body: dict, _: None = Depends(_require_local)):
             raise HTTPException(
                 status_code=400, detail="`project_dir` is required when not global"
             )
-        path_obj = Path(project_dir).expanduser()
+        resolved = validate_output_path(project_dir, base_dir=Path.home())
+        if resolved is None:
+            raise HTTPException(status_code=400, detail="Invalid project_dir")
+        path_obj = resolved
         if not path_obj.exists():
             # Stale registry entry — clean it up without touching disk.
             _config_manager.remove_connection(
@@ -1497,13 +1524,20 @@ def _migrate_load_or_export(
     from memanto.cli.migrate.okf_loader import load_okf_bundle
     from memanto.cli.migrate.runner import load_export
 
+    # Restrict all file paths to the provider's migrate directory to prevent
+    # path traversal reads of ~/.memanto/secret_key, session files, etc.
+    safe_migrate_base = _config_manager.get_migrate_dir(provider)
+
     if provider == "okf":
         if not file_path:
             raise HTTPException(
                 status_code=400,
                 detail="`file` (server-side path to an OKF bundle directory or .md file) is required for OKF.",
             )
-        path = Path(file_path).expanduser()
+        resolved = validate_output_path(file_path, base_dir=safe_migrate_base)
+        if resolved is None:
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        path = resolved
         if not path.exists():
             raise HTTPException(
                 status_code=400, detail=f"OKF bundle not found: {file_path}"
@@ -1511,7 +1545,10 @@ def _migrate_load_or_export(
         return str(path), load_okf_bundle(path)
 
     if file_path:
-        path = Path(file_path).expanduser()
+        resolved = validate_output_path(file_path, base_dir=safe_migrate_base)
+        if resolved is None:
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        path = resolved
         if not path.exists() or not path.is_file():
             raise HTTPException(
                 status_code=400, detail=f"Export file not found: {file_path}"
