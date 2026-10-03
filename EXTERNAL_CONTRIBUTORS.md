@@ -118,3 +118,8 @@ GitHub on [https://memanto.ai/contributor-onboard](https://memanto.ai/contributo
 - @vexmeavf
 - @sidshehria
 - @AIVensk
+- @ayyurwork-lang
+- @Hariharanpugazh
+- @uknwplayer
+- @Gangrade-Raghav
+- @notkainoa
